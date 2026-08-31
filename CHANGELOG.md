@@ -4,10 +4,41 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
-## [Unreleased]
+## [1.1.0] — 2026-08-31
+
+### Fixed
+
+- **Chat backlog was re-emitted as live messages on every race.** `chat_message` was
+  captured from `ChatWindowPanel.GenerateUserMessage`, which is a *rendering* call.
+  The race scene reload disables and re-enables the chat panel, and `OnEnable` calls
+  `GenerateChatFromHistory` — so the entire retained backlog was redrawn and
+  republished once per race, with a fresh `timestamp_utc` and a restarted
+  `event_ordinal`. Nothing in the payload let a server tell a replay from a real
+  message.
+
+  This was not just duplicate logging: a server that treats chat as input acted on
+  them. A single `3` typed to vote for a track was counted again in each of the three
+  following races, steering the rotation with a ballot nobody typed; `/next` and
+  `/extend` were equally replayable; and the bot reacted to its own past
+  announcements.
+
+  Emission is now gated on being inside `OnChatMessageReceived`, so a redraw emits
+  nothing. If that method cannot be found the plugin falls back to suppressing the
+  known `GenerateChatFromHistory` redraw, and if neither is found it says so rather
+  than failing silently — see [docs/chat-capture.md](docs/chat-capture.md).
 
 ### Added
 
+- `chat_message` gains **`chat_id`** — monotonic within the session and never reset,
+  so `(session_id, chat_id)` is a stable dedupe key and messages are orderable across
+  races (`event_ordinal` restarts each race and cannot do that).
+- `chat_message` gains **`self`** — true for the bot's own messages, so a server
+  acting on chat can ignore its own announcements.
+- `session_started` gains **`chat_capture_mode`** (`Receive` / `SuppressHistory` /
+  `Legacy` / `None`), telling the server whether backlog suppression is actually in
+  force or whether it must dedupe itself.
+- [docs/chat-capture.md](docs/chat-capture.md) — the render-vs-receive call graph,
+  the gating modes, and how to check for a regression after a game update.
 - `scripts/release-dll.sh` — builds the plugin against a local Liftoff install and
   uploads `JmtLiftoffMod.dll`, a zip, and `SHA256SUMS.txt` to the matching GitHub
   release. It refuses to run on a dirty tree or when `HEAD` is not the tagged
@@ -16,6 +47,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- The two `session_started` payloads (on connect, and once at startup) are built by a
+  single helper instead of being duplicated, and the startup one is now sent after
+  chat capture installs so `chat_capture_mode` reports the mode actually in force.
 - README now leads with what the mod is *for* — it is the in-game half of the JMT
   FPV platform and the companion mod to the unreleased JMT App, providing automatic
   track control, gate-level leaderboards and live competition data.
@@ -66,4 +100,5 @@ No behavioural changes to telemetry, the track-control layer, or the server
 protocol — the wire vocabulary in [`contracts/`](contracts/) is unchanged from
 `LiftoffRaceBot`, other than the plugin name reported in `session_started`.
 
+[1.1.0]: https://github.com/geekhostuk/jmt-liftoff-mod/releases/tag/v1.1.0
 [1.0.0]: https://github.com/geekhostuk/jmt-liftoff-mod/releases/tag/v1.0.0

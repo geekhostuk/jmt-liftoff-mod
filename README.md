@@ -88,6 +88,7 @@ message vocabulary is schema-defined in [`contracts/`](contracts/).
 | [docs/install.md](docs/install.md) | Installing BepInEx + the plugin and linking it to a server |
 | [docs/building.md](docs/building.md) | Building from source (`LIFTOFF_DIR`, `BEPINEX_CORE_DIR`) |
 | [docs/versioning.md](docs/versioning.md) | Where the version lives and how a release is cut |
+| [docs/chat-capture.md](docs/chat-capture.md) | How chat is captured on receipt, and why the backlog is not replayed |
 | [docs/server-protocol.md](docs/server-protocol.md) | WebSocket connection, auth, keepalive, command/ack correlation |
 | [docs/command-reference.md](docs/command-reference.md) | Every server→plugin command and plugin→server event, with JSON examples |
 | [docs/multiplayer-track-control.md](docs/multiplayer-track-control.md) | Reverse-engineering notes for the host-side track-control layer |

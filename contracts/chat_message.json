@@ -2,14 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "chat_message.json",
   "title": "chat_message",
-  "description": "Emitted by the plugin when a player sends a chat message",
+  "description": "Emitted by the plugin when a player sends a chat message. Emitted on receipt, so a message is reported exactly once — the chat window's backlog redraw (which happens on every race scene reload) does not re-emit it. Check chat_capture_mode in session_started: if it is 'Legacy' the plugin could not install the receive-side gate and the backlog may be replayed, in which case dedupe on (session_id, chat_id).",
   "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
   "properties": {
     "event_type": { "const": "chat_message" },
     "actor":      { "type": ["integer", "null"], "description": "Photon actor number (null if unresolved)" },
     "user_id":    { "type": "string", "description": "Steam/user ID" },
     "nick":       { "type": "string" },
-    "message":    { "type": "string" }
+    "message":    { "type": "string" },
+    "chat_id":    {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic per chat message within the session, never reset. (session_id, chat_id) is a stable dedupe key, and unlike event_ordinal — which restarts each race — it orders messages across race boundaries."
+    },
+    "self":       {
+      "type": "boolean",
+      "description": "True when the bot sent this message itself. The bot's own announcements come back through the same path as player chat; servers that treat chat as input should ignore these rather than react to themselves."
+    }
   },
-  "required": ["nick", "message"]
+  "required": ["nick", "message", "chat_id", "self"]
 }

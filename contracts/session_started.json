@@ -3,12 +3,40 @@
   "$id": "session_started.json",
   "title": "session_started",
   "description": "Emitted by the plugin when it initialises and connects to the server",
-  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "allOf": [
+    {
+      "$ref": "common.json#/$defs/eventMeta"
+    }
+  ],
   "properties": {
-    "event_type":  { "const": "session_started" },
-    "plugin":      { "type": "string", "description": "Plugin name" },
-    "version":     { "type": "string", "description": "Plugin version" },
-    "buildMarker": { "type": "string", "description": "Build identifier" }
+    "event_type": {
+      "const": "session_started"
+    },
+    "plugin": {
+      "type": "string",
+      "description": "Plugin name"
+    },
+    "version": {
+      "type": "string",
+      "description": "Plugin version"
+    },
+    "buildMarker": {
+      "type": "string",
+      "description": "Build identifier"
+    },
+    "chat_capture_mode": {
+      "type": "string",
+      "enum": [
+        "Receive",
+        "SuppressHistory",
+        "Legacy",
+        "None"
+      ],
+      "description": "How the plugin gates chat capture. 'Receive' (normal) emits only on message receipt, so the chat backlog is never replayed. 'SuppressHistory' is a weaker fallback that skips the known redraw path. 'Legacy' means neither gate could be installed and the backlog WILL be re-emitted once per race \u2014 a server must then dedupe on (session_id, chat_id). 'None' means chat capture is not installed at all."
+    }
   },
-  "required": ["plugin", "version"]
+  "required": [
+    "plugin",
+    "version"
+  ]
 }

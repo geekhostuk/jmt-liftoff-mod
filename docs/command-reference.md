@@ -89,7 +89,7 @@ timeout as "unsupported or unreachable".
 | [`player_entered`](../contracts/player_entered.json) / [`player_left`](../contracts/player_left.json) | Player joins/leaves the room | `actor`, `nick`, `user_id` |
 | [`player_list`](../contracts/player_list.json) | Snapshot on change | `players[]` (`actor`, `nick`, `user_id`) |
 | [`lobby_status`](../contracts/lobby_status.json) | On enter/leave/host change or `request_lobby_status` | `in_room`, `in_lobby`, `room_name`, `player_count`, `max_players`, `is_host`, `is_open`, `is_visible`, `network_state`, `current_env/track/race` |
-| [`chat_message`](../contracts/chat_message.json) | Player chats | `actor`, `user_id`, `nick`, `message` |
+| [`chat_message`](../contracts/chat_message.json) | Player chats (on receipt — backlog is not replayed, see [chat-capture.md](chat-capture.md)) | `actor`, `user_id`, `nick`, `message`, `chat_id`, `self` |
 | [`kick_result`](../contracts/kick_result.json) | After `kick_player` | `actor`, `nick`, `success`, `reason` |
 
 ### Track state

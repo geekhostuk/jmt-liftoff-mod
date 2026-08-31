@@ -46,6 +46,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private string _raceId = string.Empty;
     private int _raceOrdinal;
     private long _raceEventOrdinal;
+    private long _chatOrdinal;
     private bool _registered;
     private bool _isQuitting;
     private bool _photonWasDisconnected;
@@ -459,40 +460,12 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             onConnected: () =>
             {
                 _competitionClient?.EnqueueEvent(
-                    SerializeJsonObject(new Dictionary<string, object?>
-                    {
-                        ["event_type"]    = "session_started",
-                        ["timestamp_utc"] = DateTime.UtcNow.ToString("O"),
-                        ["session_id"]    = _sessionId,
-                        ["race_id"]       = _raceId,
-                        ["race_ordinal"]  = _raceOrdinal,
-                        ["event_ordinal"] = _raceEventOrdinal,
-                        ["plugin"]        = PluginName,
-                        ["version"]       = PluginVersion,
-                        ["buildMarker"]   = BuildMarker,
-                    })
+                    SerializeJsonObject(SessionStartedPayload())
                 );
                 EmitPlayerList();
             },
             getMainThreadLastTickUtcMs: () => GetMainThreadLastTickUtcMs());
         _competitionClient.Start();
-
-        // Re-send session_started now that the client exists so the server
-        // receives it and can create the session row before any race events.
-        _competitionClient.EnqueueEvent(
-            SerializeJsonObject(new Dictionary<string, object?>
-            {
-                ["event_type"]    = "session_started",
-                ["timestamp_utc"] = DateTime.UtcNow.ToString("O"),
-                ["session_id"]    = _sessionId,
-                ["race_id"]       = _raceId,
-                ["race_ordinal"]  = _raceOrdinal,
-                ["event_ordinal"] = _raceEventOrdinal,
-                ["plugin"]        = PluginName,
-                ["version"]       = PluginVersion,
-                ["buildMarker"]   = BuildMarker,
-            })
-        );
 
         _chatCapture = new ChatCaptureService(Logger, PluginGuid, (userId, userName, message) =>
         {
@@ -506,15 +479,34 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                     break;
                 }
             }
+
+            // Messages the bot sent itself come back through the same render path as anyone
+            // else's. Flagging them stops a server acting on its own announcements.
+            var localUserId = PhotonNetwork.LocalPlayer?.UserId;
+            var self = !string.IsNullOrEmpty(localUserId)
+                    && string.Equals(localUserId, userId, StringComparison.OrdinalIgnoreCase);
+
             AppendRaceEvent("chat_message", new Dictionary<string, object?>
             {
                 ["actor"]   = actor,
                 ["user_id"] = userId,
                 ["nick"]    = userName,
-                ["message"] = message
+                ["message"] = message,
+                // Monotonic for the whole plugin session and never reset, so (session_id,
+                // chat_id) is a stable dedupe key and messages stay orderable across races —
+                // event_ordinal restarts at every race and cannot do that.
+                ["chat_id"] = ++_chatOrdinal,
+                ["self"]    = self
             });
         });
         _chatCapture.Install();
+
+        // Re-send session_started now that the client exists so the server receives it and can
+        // create the session row before any race events. Deliberately after chat capture is
+        // installed, so chat_capture_mode reports the mode actually in force.
+        _competitionClient.EnqueueEvent(
+            SerializeJsonObject(SessionStartedPayload())
+        );
 
         // ── Lobby status service ──────────────────────────────────────────
         _emitLobbyStatusOnChange = _hiddenConfig.Bind(
@@ -1674,6 +1666,27 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             ["reason"] = reason
         });
     }
+
+    /// <summary>
+    /// The session_started payload. Sent on every (re)connect and once at startup; the server
+    /// keys the session row off it, so both sites must agree.
+    /// </summary>
+    private Dictionary<string, object?> SessionStartedPayload() => new()
+    {
+        ["event_type"]    = "session_started",
+        ["timestamp_utc"] = DateTime.UtcNow.ToString("O"),
+        ["session_id"]    = _sessionId,
+        ["race_id"]       = _raceId,
+        ["race_ordinal"]  = _raceOrdinal,
+        ["event_ordinal"] = _raceEventOrdinal,
+        ["plugin"]        = PluginName,
+        ["version"]       = PluginVersion,
+        ["buildMarker"]   = BuildMarker,
+        // Tells the server whether chat backlog is suppressed at source ("Receive"/
+        // "SuppressHistory") or whether it must dedupe on (session_id, chat_id) itself
+        // ("Legacy"). See Features/Chat/ChatCaptureService.cs.
+        ["chat_capture_mode"] = ChatCaptureService.Mode.ToString(),
+    };
 
     private void StartNewRace(string reason)
     {
