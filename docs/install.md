@@ -2,13 +2,16 @@
 
 ## Prerequisites
 
-- A Steam copy of **Liftoff: FPV Drone Racing** (Windows).
+- A Steam copy of **Liftoff: FPV Drone Racing**. Paths below use the Windows
+  install, but the mod is plain IL and also loads under BepInEx on the game's
+  native Linux build (`~/.local/share/Steam/steamapps/common/Liftoff`).
 - **BepInEx 5.x (x64)** — the Unity Mono plugin loader.
-- `JmtLiftoffMod.dll` — from a
-  [release](https://github.com/geekhostuk/jmt-liftoff-mod/releases/latest) or built
-  from source ([building.md](building.md)).
-- A competition server to connect to, and an **API key** issued by that server
-  for this bot.
+- `JmtLiftoffMod.dll` from the
+  [latest release](https://github.com/geekhostuk/jmt-liftoff-mod/releases/latest),
+  or built from source ([building.md](building.md)).
+- A server to connect to — the **JMT App**, or any server speaking the
+  [documented protocol](server-protocol.md) — and an **API key** issued by it for
+  this bot.
 
 The mod hosts the room it runs in, so give it **its own machine and game
 instance** — don't run it on a client you also want to fly on.

@@ -16,6 +16,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- README now leads with what the mod is *for* — it is the in-game half of the JMT
+  FPV platform and the companion mod to the unreleased JMT App, providing automatic
+  track control, gate-level leaderboards and live competition data.
+- Corrected the repo-scope section: it read as though no mod binary existed
+  anywhere. Releases ship a built `JmtLiftoffMod.dll`; it is the *game's* DLLs that
+  are never committed here.
+- `docs/install.md` no longer claims Liftoff must be the Windows build — the mod
+  loads under BepInEx on the native Linux build too.
 - The build now finds a standard Steam install of Liftoff on Linux
   (`~/.local/share/Steam/...`, `~/.steam/steam/...`) as well as the Windows default,
   so `LIFTOFF_DIR` is only needed for non-standard layouts.
