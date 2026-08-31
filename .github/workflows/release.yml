@@ -55,18 +55,26 @@ jobs:
 
           ### Installing
 
-          See [docs/install.md](https://github.com/${{ github.repository }}/blob/${{ steps.v.outputs.tag }}/docs/install.md).
+          Download \`JmtLiftoffMod.dll\` below and drop it into your \`Liftoff\BepInEx\plugins\` folder,
+          then set \`ServerUrl\` and \`ApiKey\` in the generated config. Full instructions:
+          [docs/install.md](https://github.com/${{ github.repository }}/blob/${{ steps.v.outputs.tag }}/docs/install.md).
 
-          ### Why there is no DLL attached
+          The plugin is plain IL targeting .NET Framework 4.7.2, so the same DLL runs
+          under BepInEx on both the Windows and the native Linux builds of the game.
 
-          Building this plugin requires Liftoff's and BepInEx's copyrighted managed
-          assemblies, which cannot be committed here or shipped to CI — so releases
-          are **source only**. Build it yourself against your own Steam copy of
-          Liftoff ([docs/building.md](https://github.com/${{ github.repository }}/blob/${{ steps.v.outputs.tag }}/docs/building.md)):
+          Verify your download against \`SHA256SUMS.txt\`:
 
-          \`\`\`powershell
-          dotnet build src\JmtLiftoffMod\JmtLiftoffMod.csproj -c Release
+          \`\`\`bash
+          sha256sum -c SHA256SUMS.txt
           \`\`\`
+
+          ### Building it yourself
+
+          Binaries are built and uploaded from a machine that owns a copy of Liftoff —
+          the game's copyrighted assemblies cannot be shipped to CI, so this workflow
+          publishes the release and the DLL is attached separately. To build your own
+          against your Steam copy, see
+          [docs/building.md](https://github.com/${{ github.repository }}/blob/${{ steps.v.outputs.tag }}/docs/building.md).
           EOF
           cat RELEASE_NOTES.md
 
@@ -79,30 +87,12 @@ jobs:
             --notes-file RELEASE_NOTES.md \
             --verify-tag
 
-  # Enable this job only if you have a runner that can legally reach Liftoff's
-  # managed assemblies — a self-hosted Windows runner with the game installed, or
-  # a private repo of reference assemblies. Then the release ships a real DLL.
+  # NOTE: there is deliberately no DLL-building job here.
   #
-  # build-dll:
-  #   name: Build plugin DLL
-  #   needs: release
-  #   runs-on: [self-hosted, windows, liftoff]
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         ref: ${{ github.event.inputs.tag || github.ref }}
-  #     - uses: actions/setup-dotnet@v4
-  #       with:
-  #         dotnet-version: '8.0.x'
-  #     - name: Build
-  #       env:
-  #         LIFTOFF_DIR: C:\Program Files (x86)\Steam\steamapps\common\Liftoff
-  #       run: >
-  #         dotnet build src\JmtLiftoffMod\JmtLiftoffMod.csproj -c Release
-  #         -p:BuildRevision=$("${{ github.sha }}".Substring(0,7))
-  #     - name: Attach DLL to the release
-  #       env:
-  #         GH_TOKEN: ${{ github.token }}
-  #       run: >
-  #         gh release upload ${{ github.event.inputs.tag || github.ref_name }}
-  #         src\JmtLiftoffMod\bin\Release\net472\JmtLiftoffMod.dll
+  # A GitHub-hosted runner has no copy of Liftoff, and the game's managed assemblies
+  # must never be committed to this repo. A self-hosted runner with the game installed
+  # would work technically, but attaching one to a PUBLIC repository lets any fork's
+  # pull request execute code on that machine — not a trade worth making for a build.
+  #
+  # The release binary is therefore built locally and uploaded with
+  # scripts/release-dll.sh. See docs/versioning.md#release-assets.

@@ -77,20 +77,39 @@ The [`release` workflow](../.github/workflows/release.yml) fires on the tag, che
 that the tag matches `<Version>` (and fails loudly if it doesn't), and publishes a
 GitHub release with notes.
 
-### About release assets
+### Release assets
 
-Building the DLL requires Liftoff's copyrighted managed assemblies, which cannot
-be committed to this repo or shipped to CI. **The release workflow therefore
-publishes source only** — it does not attach a compiled DLL.
+Building the DLL requires Liftoff's copyrighted managed assemblies, which cannot be
+committed to this repo or shipped to GitHub-hosted CI. So the release workflow
+publishes the release and its notes, and the **binary is built on a machine that
+owns a copy of the game** and uploaded to that release:
 
-To ship a binary, build it on a machine with Liftoff installed and attach it to
-the published release:
-
-```powershell
-dotnet build src\JmtLiftoffMod\JmtLiftoffMod.csproj -c Release -p:BuildRevision=$(git rev-parse --short HEAD)
-gh release upload v1.1.0 src\JmtLiftoffMod\bin\Release\net472\JmtLiftoffMod.dll
+```bash
+git checkout v1.1.0
+scripts/release-dll.sh
 ```
 
-If you later put the reference assemblies somewhere CI can legally reach them
-(a private repo or a self-hosted Windows runner with the game installed), the
-commented-out `build` job in the release workflow shows what to enable.
+The script refuses to run on a dirty tree, or when `HEAD` is not the tagged commit
+— otherwise the `buildMarker` compiled into the DLL would point at a commit the
+release doesn't contain. It builds with `BuildRevision` set to the short SHA,
+packages the DLL, and uploads three assets:
+
+| Asset | Contents |
+|---|---|
+| `JmtLiftoffMod.dll` | The plugin, for dropping straight into `BepInEx\plugins\`. |
+| `JmtLiftoffMod-<version>.zip` | DLL + pdb + `LICENSE` + install instructions. |
+| `SHA256SUMS.txt` | Checksums for both of the above. |
+
+Pass `--no-upload` to build and package without touching the release.
+
+There is a gap between the workflow publishing the release and the script
+attaching the binary. If that matters to you, have the workflow create the release
+as a draft (`gh release create --draft`) and publish it after the upload.
+
+### Why CI doesn't build it
+
+A GitHub-hosted runner has no copy of Liftoff, and the game's assemblies must not
+be committed here. A self-hosted runner with the game installed *would* work, but
+attaching one to a **public** repository is a known security hazard — any fork's
+pull request could run code on that machine. Building locally and uploading is the
+safer trade.

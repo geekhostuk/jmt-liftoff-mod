@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
+## [Unreleased]
+
+### Added
+
+- `scripts/release-dll.sh` — builds the plugin against a local Liftoff install and
+  uploads `JmtLiftoffMod.dll`, a zip, and `SHA256SUMS.txt` to the matching GitHub
+  release. It refuses to run on a dirty tree or when `HEAD` is not the tagged
+  commit, so a published DLL's `buildMarker` always names a commit the release
+  actually contains.
+
+### Changed
+
+- The build now finds a standard Steam install of Liftoff on Linux
+  (`~/.local/share/Steam/...`, `~/.steam/steam/...`) as well as the Windows default,
+  so `LIFTOFF_DIR` is only needed for non-standard layouts.
+- Releases now ship a compiled DLL. Release notes point at the binary and its
+  checksums instead of describing the release as source-only.
+
 ## [1.0.0] — 2026-08-31
 
 First release of **JMT Liftoff Mod** as a standalone project. Extracted from

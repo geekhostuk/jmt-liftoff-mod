@@ -38,8 +38,12 @@ internal static class BuildInfo
     </ItemGroup>
   </Target>
 
-  <!-- Set LIFTOFF_DIR environment variable to override the default Liftoff install path -->
+  <!-- Locate the Liftoff install. Set the LIFTOFF_DIR environment variable to override;
+       otherwise the usual Steam library locations are probed, Linux first (the native
+       depot ships the same managed assemblies as the Windows one), then the Windows default. -->
   <PropertyGroup>
+    <LIFTOFF_DIR Condition="'$(LIFTOFF_DIR)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/Liftoff/Liftoff_Data/Managed')">$(HOME)/.local/share/Steam/steamapps/common/Liftoff</LIFTOFF_DIR>
+    <LIFTOFF_DIR Condition="'$(LIFTOFF_DIR)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/Liftoff/Liftoff_Data/Managed')">$(HOME)/.steam/steam/steamapps/common/Liftoff</LIFTOFF_DIR>
     <LIFTOFF_DIR Condition="'$(LIFTOFF_DIR)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Liftoff</LIFTOFF_DIR>
   </PropertyGroup>
 
