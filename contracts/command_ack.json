@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "command_ack.json",
+  "title": "command_ack",
+  "description": "Sent by the plugin to acknowledge receipt of a server command",
+  "type": "object",
+  "properties": {
+    "event_type": { "const": "command_ack" },
+    "command_id": { "type": "string", "description": "ID of the acknowledged command" },
+    "status":     { "type": "string", "description": "Outcome (e.g. ok, error)" },
+    "message":    { "type": "string", "description": "Human-readable detail (empty on success)" },
+    "timing_total_ms": { "type": "integer", "description": "Total plugin-side processing time in ms (optional)" },
+    "timing_queue_ms": { "type": "integer", "description": "Time waiting in Unity main-thread queue in ms (optional)" },
+    "timing_phases":   { "type": "string",  "description": "Semicolon-delimited phase breakdown e.g. discovery_refresh=2;popup_acquire=45 (optional)" },
+    "diagnostics":     { "type": "string",  "description": "Execution diagnostics summary — call counts and option counts (optional)" },
+    "current_env":     { "type": "string",  "description": "Bot's actual current environment from Photon room properties (optional)" },
+    "current_track":   { "type": "string",  "description": "Bot's actual current track from Photon room properties (optional)" },
+    "current_race":    { "type": "string",  "description": "Bot's actual current race from Photon room properties (optional)" }
+  },
+  "required": ["event_type", "command_id", "status"]
+}

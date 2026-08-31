@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "state_snapshot.json",
+  "title": "state_snapshot",
+  "description": "Sent by the server to a newly connected WebSocket client with current state",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type":     { "const": "state_snapshot" },
+    "race":           { "type": ["object", "null"], "description": "Latest race with laps" },
+    "current_track":  { "type": ["object", "null"], "description": "Currently active track" },
+    "track_since":    { "type": ["string", "null"], "format": "date-time", "description": "When the current track was set" },
+    "online_players": {
+      "type": "array",
+      "description": "Currently connected players",
+      "items": {
+        "type": "object",
+        "properties": {
+          "actor": { "type": "integer" },
+          "nick":  { "type": "string" }
+        }
+      }
+    }
+  }
+}

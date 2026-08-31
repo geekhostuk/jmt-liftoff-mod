@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "common.json",
+  "description": "Shared definitions for all plugin and server events",
+  "$defs": {
+    "eventMeta": {
+      "type": "object",
+      "properties": {
+        "event_type":    { "type": "string" },
+        "timestamp_utc": { "type": "string", "format": "date-time" },
+        "session_id":    { "type": "string" },
+        "race_id":       { "type": "string" },
+        "race_ordinal":  { "type": "integer", "minimum": 0 },
+        "event_ordinal": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["event_type", "timestamp_utc", "session_id", "race_id", "race_ordinal", "event_ordinal"]
+    },
+    "serverEvent": {
+      "type": "object",
+      "description": "Base for server-generated events broadcast to browser clients",
+      "properties": {
+        "event_type": { "type": "string" }
+      },
+      "required": ["event_type"]
+    }
+  }
+}

@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # The plugin cannot be compiled in CI: it references Liftoff's and BepInEx's
+      # copyrighted managed assemblies, which are not (and must never be) in this
+      # repo. What CI *can* prove is that the version wiring is intact and the
+      # protocol contracts are well-formed.
+      - name: Generate BuildInfo
+        run: >
+          dotnet msbuild src/JmtLiftoffMod/JmtLiftoffMod.csproj
+          -t:GenerateBuildInfo -p:Configuration=Release -p:BuildRevision=${GITHUB_SHA::7}
+
+      - name: Check version flows into BuildInfo
+        run: |
+          version=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props)
+          generated=src/JmtLiftoffMod/obj/Release/net472/BuildInfo.g.cs
+          echo "Directory.Build.props version: $version"
+          cat "$generated"
+          grep -q "Version = \"$version\";" "$generated" \
+            || { echo "::error::BuildInfo.Version does not match <Version> ($version)"; exit 1; }
+          grep -q "Marker = \"$version+${GITHUB_SHA::7}\";" "$generated" \
+            || { echo "::error::BuildInfo.Marker did not pick up BuildRevision"; exit 1; }
+
+      - name: Check the plugin reads its version from BuildInfo
+        run: |
+          src=src/JmtLiftoffMod/JmtLiftoffMod.cs
+          grep -q 'PluginVersion = BuildInfo.Version;' "$src" \
+            || { echo "::error::PluginVersion is not wired to BuildInfo — did someone hardcode it again?"; exit 1; }
+          grep -q 'BuildMarker = BuildInfo.Marker;' "$src" \
+            || { echo "::error::BuildMarker is not wired to BuildInfo"; exit 1; }
+
+      - name: Check CHANGELOG has an entry for this version
+        run: |
+          version=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props)
+          grep -q "^## \[$version\]" CHANGELOG.md \
+            || { echo "::error::CHANGELOG.md has no '## [$version]' section"; exit 1; }
+
+      - name: Validate contract schemas are well-formed JSON
+        run: |
+          fail=0
+          for f in contracts/*.json; do
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f" \
+              || { echo "::error file=$f::invalid JSON"; fail=1; }
+          done
+          exit $fail
+
+      - name: Check no game or BepInEx assemblies were committed
+        run: |
+          if find . -path ./.git -prune -o \( -name '*.dll' -o -name '*.so' \) -print | grep -q .; then
+            echo "::error::Binary assemblies must never be committed to this repository"
+            find . -path ./.git -prune -o \( -name '*.dll' -o -name '*.so' \) -print
+            exit 1
+          fi

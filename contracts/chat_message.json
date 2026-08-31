@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chat_message.json",
+  "title": "chat_message",
+  "description": "Emitted by the plugin when a player sends a chat message",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "chat_message" },
+    "actor":      { "type": ["integer", "null"], "description": "Photon actor number (null if unresolved)" },
+    "user_id":    { "type": "string", "description": "Steam/user ID" },
+    "nick":       { "type": "string" },
+    "message":    { "type": "string" }
+  },
+  "required": ["nick", "message"]
+}

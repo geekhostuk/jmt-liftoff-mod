@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "competition_week_started.json",
+  "title": "competition_week_started",
+  "description": "Broadcast when a new competition week begins",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type":       { "const": "competition_week_started" },
+    "week_id":          { "type": "integer" },
+    "week_number":      { "type": "integer" },
+    "competition_name": { "type": "string" },
+    "starts_at":        { "type": "string", "format": "date-time" },
+    "ends_at":          { "type": "string", "format": "date-time" }
+  },
+  "required": ["week_id", "week_number", "competition_name", "starts_at", "ends_at"]
+}

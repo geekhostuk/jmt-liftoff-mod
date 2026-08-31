@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "competition_standings_update.json",
+  "title": "competition_standings_update",
+  "description": "Broadcast with updated competition standings after scoring changes",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type": { "const": "competition_standings_update" },
+    "week_id":    { "type": "integer" },
+    "standings":  {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rank":               { "type": "integer" },
+          "display_name":       { "type": "string" },
+          "total_points":       { "type": "integer" },
+          "position_points":    { "type": "integer" },
+          "laps_points":        { "type": "integer" },
+          "consistency_points": { "type": "integer" },
+          "streak_points":      { "type": "integer" }
+        },
+        "required": ["rank", "display_name", "total_points"]
+      }
+    }
+  },
+  "required": ["week_id", "standings"]
+}

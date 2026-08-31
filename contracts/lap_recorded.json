@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lap_recorded.json",
+  "title": "lap_recorded",
+  "description": "Emitted by the plugin each time a pilot completes a lap",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":     { "const": "lap_recorded" },
+    "actor":          { "type": "integer", "description": "Photon actor number" },
+    "nick":           { "type": "string" },
+    "pilot_guid":     { "type": "string" },
+    "steam_id":       { "type": ["string", "null"] },
+    "source":         { "type": "string", "description": "How the lap was detected (e.g. event200, gms_merge)" },
+    "lap_number":     { "type": "integer", "minimum": 1 },
+    "lap_ms":         { "type": "integer", "minimum": 0, "description": "Lap time in milliseconds" },
+    "lap_sec":        { "type": "number", "description": "Lap time in seconds (derived)" },
+    "delta_prev_ms":  { "type": ["integer", "null"], "description": "Delta vs previous lap" },
+    "delta_best_ms":  { "type": ["integer", "null"], "description": "Delta vs personal best" }
+  },
+  "required": ["actor", "nick", "lap_ms", "lap_number"]
+}

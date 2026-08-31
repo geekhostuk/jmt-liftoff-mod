@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pilot_active.json",
+  "title": "pilot_active",
+  "description": "Emitted by the plugin when a pilot shows signs of activity (movement or property changes). Throttled to one emission per 5 seconds per actor.",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "pilot_active" },
+    "actor":      { "type": "integer", "description": "Photon actor number" },
+    "nick":       { "type": "string" },
+    "source":     { "type": "string", "enum": ["movement", "property_change"], "description": "What triggered the activity signal" },
+    "detail":     { "type": "string", "description": "Optional detail (e.g. RS=3, GS=2, GMS)" }
+  },
+  "required": ["actor", "nick", "source"]
+}

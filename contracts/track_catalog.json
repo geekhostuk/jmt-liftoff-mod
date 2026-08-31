@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "track_catalog.json",
+  "title": "track_catalog",
+  "description": "Emitted by the plugin with the full list of available environments and tracks",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":    { "const": "track_catalog" },
+    "environments":  {
+      "type": "array",
+      "description": "List of environments with their tracks",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name":   { "type": "string" },
+          "tracks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":        { "type": "string" },
+                "race":        { "type": "string" },
+                "workshop_id": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

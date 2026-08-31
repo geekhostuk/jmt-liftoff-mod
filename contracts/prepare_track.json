@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prepare_track.json",
+  "title": "prepare_track",
+  "description": "Command sent from server to plugin ~60s before a track change so the plugin can pre-warm popup state and cache assets",
+  "type": "object",
+  "properties": {
+    "cmd":         { "const": "prepare_track" },
+    "command_id":  { "type": "string" },
+    "env":         { "type": "string", "description": "Environment/scene name" },
+    "track":       { "type": "string", "description": "Track name" },
+    "race":        { "type": "string", "description": "Race mode" },
+    "workshop_id": { "type": "string", "description": "Steam Workshop ID (empty for built-in tracks)" }
+  },
+  "required": ["cmd", "env", "track", "race"]
+}

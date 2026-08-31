@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "race_reset.json",
+  "title": "race_reset",
+  "description": "Emitted when a new race starts (track change, manual reset, or game-initiated)",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":       { "const": "race_reset" },
+    "reason":           { "type": "string", "description": "Why the race was reset (e.g. track_change, sgso, manual)" },
+    "previous_race_id": { "type": "string" }
+  },
+  "required": ["reason", "previous_race_id"]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "kick_result.json",
+  "title": "kick_result",
+  "description": "Sent by the plugin with the outcome of a kick command",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "kick_result" },
+    "actor":      { "type": "integer", "description": "Photon actor number of the kicked player" },
+    "nick":       { "type": ["string", "null"], "description": "Player nickname (null if not found)" },
+    "success":    { "type": "boolean" },
+    "reason":     { "type": ["string", "null"], "description": "Failure reason if applicable" }
+  },
+  "required": ["actor", "success"]
+}

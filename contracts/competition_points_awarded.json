@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "competition_points_awarded.json",
+  "title": "competition_points_awarded",
+  "description": "Broadcast after a race with the points awarded to each pilot",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type": { "const": "competition_points_awarded" },
+    "race_id":    { "type": "string" },
+    "awards":     {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pilot_key":    { "type": "string" },
+          "display_name": { "type": "string" },
+          "category":     { "type": "string", "description": "Scoring category (e.g. race_position, most_laps, lap_leader, hot_streak, consistency)" },
+          "points":       { "type": "integer" },
+          "detail":       { "type": "string", "description": "Human-readable description (e.g. 1st place, 5 laps)" }
+        },
+        "required": ["pilot_key", "display_name", "category", "points"]
+      }
+    }
+  },
+  "required": ["race_id", "awards"]
+}

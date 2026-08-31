@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "player_list.json",
+  "title": "player_list",
+  "description": "Full snapshot of players currently in the lobby",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "player_list" },
+    "players": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "actor":   { "type": "integer" },
+          "nick":    { "type": "string" },
+          "user_id": { "type": ["string", "null"] }
+        },
+        "required": ["actor", "nick"]
+      }
+    }
+  },
+  "required": ["players"]
+}

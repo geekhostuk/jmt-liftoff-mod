@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "checkpoint.json",
+  "title": "checkpoint",
+  "description": "Emitted by the plugin when a pilot passes through a mid-lap checkpoint",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":    { "const": "checkpoint" },
+    "actor":         { "type": "integer", "description": "Photon actor number" },
+    "nick":          { "type": "string" },
+    "checkpoint_id": { "type": "string", "description": "Unique checkpoint identifier from GMS" },
+    "lap_index":     { "type": "integer", "minimum": 0, "description": "Zero-based lap number" },
+    "elapsed_sec":   { "type": "number", "description": "Time elapsed since lap start in seconds" }
+  },
+  "required": ["actor", "nick", "checkpoint_id", "lap_index", "elapsed_sec"]
+}

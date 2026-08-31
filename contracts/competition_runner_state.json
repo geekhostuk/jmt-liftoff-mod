@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "competition_runner_state.json",
+  "title": "competition_runner_state",
+  "description": "Broadcast with the current state of the competition runner",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type":             { "const": "competition_runner_state" },
+    "running":                { "type": "boolean" },
+    "auto_managed":           { "type": "boolean" },
+    "current_week_id":        { "type": ["integer", "null"] },
+    "current_playlist_index": { "type": "integer" },
+    "playlist_count":         { "type": "integer" },
+    "current_week_playlist":  { "type": ["object", "null"], "description": "Current week playlist row with metadata" }
+  },
+  "required": ["running"]
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "playlist_state.json",
+  "title": "playlist_state",
+  "description": "Broadcast by the server with the current playlist runner status",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type":     { "const": "playlist_state" },
+    "running":        { "type": "boolean" },
+    "playlist_id":    { "type": ["integer", "null"] },
+    "playlist_name":  { "type": ["string", "null"] },
+    "current_index":  { "type": "integer" },
+    "interval_ms":    { "type": "integer", "description": "Track rotation interval in ms" },
+    "current_track":  {
+      "type": ["object", "null"],
+      "properties": {
+        "env":         { "type": "string" },
+        "track":       { "type": "string" },
+        "race":        { "type": "string" },
+        "workshop_id": { "type": ["string", "null"] }
+      }
+    },
+    "track_count":    { "type": "integer" },
+    "next_change_at": { "type": ["string", "null"], "format": "date-time", "description": "ISO 8601 time of next track rotation" }
+  },
+  "required": ["running"]
+}

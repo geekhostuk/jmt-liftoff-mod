@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gate_passed.json",
+  "title": "gate_passed",
+  "description": "Emitted by the JMT Liftoff Mod plugin each time a drone passes a RaceCheckpoint gate. Captured via a Harmony postfix on RaceCheckpoint.Trigger(); only fires when the bot is loaded into a race scene.",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":    { "const": "gate_passed" },
+    "actor":         { "type": "integer", "description": "Photon actor number of the drone that passed the gate" },
+    "nick":          { "type": "string" },
+    "checkpoint_id": { "type": "integer", "description": "RaceCheckpoint.CheckpointID" },
+    "trigger_id":    { "type": "string", "description": "RaceCheckpoint.TriggerId" },
+    "gate_time_sec": { "type": "number", "description": "Unity Time.time when the gate was crossed (seconds)" }
+  },
+  "required": ["actor", "checkpoint_id", "gate_time_sec"]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pilot_reset.json",
+  "title": "pilot_reset",
+  "description": "Emitted by the plugin when a pilot resets their drone",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "pilot_reset" },
+    "actor":      { "type": "integer", "description": "Photon actor number" },
+    "nick":       { "type": "string" },
+    "reason":     { "type": "string", "description": "Reset reason (e.g. drone_reset)" }
+  },
+  "required": ["actor", "nick", "reason"]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "track_changed.json",
+  "title": "track_changed",
+  "description": "Broadcast by the server when the active track changes",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type": { "const": "track_changed" },
+    "env":        { "type": "string", "description": "Environment/scene name" },
+    "track":      { "type": "string", "description": "Track name" },
+    "race":       { "type": "string", "description": "Race mode" }
+  },
+  "required": ["env", "track", "race"]
+}

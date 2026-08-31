@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "race_end.json",
+  "title": "race_end",
+  "description": "Emitted when a race ends (winner determined or race concludes without completions)",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":       { "const": "race_end" },
+    "participants":     { "type": "integer", "minimum": 0 },
+    "completed":        { "type": "integer", "minimum": 0 },
+    "winner_actor":     { "type": "integer" },
+    "winner_nick":      { "type": "string" },
+    "winner_total_ms":  { "type": "integer", "minimum": 0 },
+    "winner_total_sec": { "type": "number" }
+  },
+  "required": ["participants", "completed"]
+}

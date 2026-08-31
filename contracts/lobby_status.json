@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lobby_status.json",
+  "title": "lobby_status",
+  "description": "Lobby state snapshot sent by the plugin on player enter/leave/host change or on request",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":    { "const": "lobby_status" },
+    "in_room":       { "type": "boolean", "description": "Whether the bot is currently in a Photon room" },
+    "in_lobby":      { "type": "boolean", "description": "Whether the bot is in the Photon lobby (room list)" },
+    "room_name":     { "type": "string", "description": "Name of the current Photon room" },
+    "player_count":  { "type": "integer", "minimum": 0, "description": "Current player count in room" },
+    "max_players":   { "type": "integer", "minimum": 0, "description": "Room max players setting" },
+    "is_host":       { "type": "boolean", "description": "Whether this bot is the Photon master client" },
+    "is_open":       { "type": "boolean", "description": "Whether the room is open for joining" },
+    "is_visible":    { "type": "boolean", "description": "Whether the room is visible in the room list" },
+    "network_state": { "type": "string", "description": "Photon NetworkClientState enum value" },
+    "current_env":   { "type": "string", "description": "Current environment name" },
+    "current_track": { "type": "string", "description": "Current track name" },
+    "current_race":  { "type": "string", "description": "Current race name" }
+  },
+  "required": ["in_room"]
+}

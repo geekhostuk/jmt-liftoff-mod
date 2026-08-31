@@ -1,0 +1,108 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish a release for (e.g. v1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve tag and version
+        id: v
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props)
+          echo "tag=$tag"         >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # The tag is the release's public identity; <Version> is what gets compiled
+          # into the DLL and reported to the competition server. If they disagree,
+          # the release lies about which build it is.
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::Tag $tag does not match <Version> $version in Directory.Build.props"
+            exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          version='${{ steps.v.outputs.version }}'
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { grab = 1; next }
+            grab && /^## \[/       { exit }
+            grab                   { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "::error::CHANGELOG.md has no '## [$version]' section to release from"
+            exit 1
+          fi
+          cat >> RELEASE_NOTES.md <<EOF
+
+          ---
+
+          ### Installing
+
+          See [docs/install.md](https://github.com/${{ github.repository }}/blob/${{ steps.v.outputs.tag }}/docs/install.md).
+
+          ### Why there is no DLL attached
+
+          Building this plugin requires Liftoff's and BepInEx's copyrighted managed
+          assemblies, which cannot be committed here or shipped to CI — so releases
+          are **source only**. Build it yourself against your own Steam copy of
+          Liftoff ([docs/building.md](https://github.com/${{ github.repository }}/blob/${{ steps.v.outputs.tag }}/docs/building.md)):
+
+          \`\`\`powershell
+          dotnet build src\JmtLiftoffMod\JmtLiftoffMod.csproj -c Release
+          \`\`\`
+          EOF
+          cat RELEASE_NOTES.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create '${{ steps.v.outputs.tag }}' \
+            --title 'JMT Liftoff Mod ${{ steps.v.outputs.version }}' \
+            --notes-file RELEASE_NOTES.md \
+            --verify-tag
+
+  # Enable this job only if you have a runner that can legally reach Liftoff's
+  # managed assemblies — a self-hosted Windows runner with the game installed, or
+  # a private repo of reference assemblies. Then the release ships a real DLL.
+  #
+  # build-dll:
+  #   name: Build plugin DLL
+  #   needs: release
+  #   runs-on: [self-hosted, windows, liftoff]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         ref: ${{ github.event.inputs.tag || github.ref }}
+  #     - uses: actions/setup-dotnet@v4
+  #       with:
+  #         dotnet-version: '8.0.x'
+  #     - name: Build
+  #       env:
+  #         LIFTOFF_DIR: C:\Program Files (x86)\Steam\steamapps\common\Liftoff
+  #       run: >
+  #         dotnet build src\JmtLiftoffMod\JmtLiftoffMod.csproj -c Release
+  #         -p:BuildRevision=$("${{ github.sha }}".Substring(0,7))
+  #     - name: Attach DLL to the release
+  #       env:
+  #         GH_TOKEN: ${{ github.token }}
+  #       run: >
+  #         gh release upload ${{ github.event.inputs.tag || github.ref_name }}
+  #         src\JmtLiftoffMod\bin\Release\net472\JmtLiftoffMod.dll

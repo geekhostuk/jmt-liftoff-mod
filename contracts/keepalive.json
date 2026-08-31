@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "keepalive.json",
+  "title": "keepalive",
+  "description": "Periodic heartbeat sent by the plugin to keep WebSocket connections alive and report bot state",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type":    { "const": "keepalive" },
+    "session_id":    { "type": "string", "description": "Plugin session identifier" },
+    "actor":         { "type": "integer", "description": "Bot's local Photon actor number" },
+    "race_id":       { "type": "string", "description": "Current race identifier" },
+    "race_ordinal":  { "type": "integer", "minimum": 0, "description": "Race sequence number within session" },
+    "current_env":   { "type": "string", "description": "Bot's actual current environment from Photon room properties" },
+    "current_track": { "type": "string", "description": "Bot's actual current track from Photon room properties" },
+    "current_race":  { "type": "string", "description": "Bot's actual current race from Photon room properties" },
+    "room_name":     { "type": "string", "description": "Photon room name" },
+    "player_count":  { "type": "integer", "minimum": 0, "description": "Current player count in room" },
+    "max_players":   { "type": "integer", "minimum": 0, "description": "Room max players setting" },
+    "is_host":       { "type": "boolean", "description": "Whether this bot is the Photon master client" },
+    "is_open":       { "type": "boolean", "description": "Whether the room is open for joining" },
+    "workshop_id":   { "type": "string", "description": "Steam Workshop ID of current track (best-effort, may be absent)" }
+  }
+}

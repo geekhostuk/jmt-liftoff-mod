@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pilot_complete.json",
+  "title": "pilot_complete",
+  "description": "Emitted by the plugin when a pilot finishes the race",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":   { "const": "pilot_complete" },
+    "actor":        { "type": "integer", "description": "Photon actor number" },
+    "nick":         { "type": "string" },
+    "pilot_guid":   { "type": "string", "description": "Per-pilot GUID (may be empty)" },
+    "reason":       { "type": "string", "description": "Completion reason (e.g. race_state_finished, lap_cap_reached)" },
+    "laps_logged":  { "type": "integer", "minimum": 0 },
+    "lap_times_ms": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "Individual lap times in ms" },
+    "total_ms":     { "type": "integer", "minimum": 0, "description": "Total time in milliseconds" },
+    "total_sec":    { "type": "number", "description": "Total time in seconds" }
+  },
+  "required": ["actor", "nick", "reason", "laps_logged", "total_ms"]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "session_started.json",
+  "title": "session_started",
+  "description": "Emitted by the plugin when it initialises and connects to the server",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":  { "const": "session_started" },
+    "plugin":      { "type": "string", "description": "Plugin name" },
+    "version":     { "type": "string", "description": "Plugin version" },
+    "buildMarker": { "type": "string", "description": "Build identifier" }
+  },
+  "required": ["plugin", "version"]
+}

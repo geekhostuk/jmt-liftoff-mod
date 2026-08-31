@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "competition_week_finalised.json",
+  "title": "competition_week_finalised",
+  "description": "Broadcast when a competition week is finalised with final standings",
+  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "properties": {
+    "event_type": { "const": "competition_week_finalised" },
+    "week_id":    { "type": "integer" },
+    "standings":  {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rank":         { "type": "integer" },
+          "display_name": { "type": "string" },
+          "total_points": { "type": "integer" }
+        },
+        "required": ["rank", "display_name", "total_points"]
+      }
+    }
+  },
+  "required": ["week_id", "standings"]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "player_entered.json",
+  "title": "player_entered",
+  "description": "Emitted when a player joins the multiplayer lobby",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "player_entered" },
+    "actor":      { "type": "integer" },
+    "nick":       { "type": "string" },
+    "user_id":    { "type": ["string", "null"] }
+  },
+  "required": ["actor", "nick"]
+}
