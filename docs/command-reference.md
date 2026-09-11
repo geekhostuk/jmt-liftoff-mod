@@ -70,6 +70,7 @@ timeout as "unsupported or unreachable".
 | `event_type` | Source | Key fields |
 |---|---|---|
 | [`lap_recorded`](../contracts/lap_recorded.json) | Both plugins (Photon event 200) | `actor`, `nick`, `pilot_guid`, `steam_id`, `lap_number`, `lap_ms`, `delta_prev_ms`, `delta_best_ms`, `source` |
+| [`pilot_reset`](../contracts/pilot_reset.json) | GMS player property, as the drone respawns | `actor`, `nick`, `reason` (`respawn` / `gms_series_mismatch`); for `respawn` also `attempt_ms`, `attempt_from` (`lap` / `respawn`), `laps_in_run` |
 | [`gate_passed`](../contracts/gate_passed.json) | Harmony hook, in-race only | `actor`, `nick`, `checkpoint_id`, `trigger_id`, `gate_time_sec` |
 | [`sector_split`](../contracts/sector_split.json) | In-race only | `actor`, `sector_index`, `from_gate`, `to_gate`, `sector_ms` |
 | [`race_end`](../contracts/race_end.json) | Both | `participants`, `completed`, `winner_actor`, `winner_nick`, `winner_total_ms` |

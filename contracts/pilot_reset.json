@@ -2,13 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pilot_reset.json",
   "title": "pilot_reset",
-  "description": "Emitted by the plugin when a pilot resets their drone",
+  "description": "Emitted by the plugin when a pilot resets their drone. With reason \"respawn\" it is sent the moment the game respawns the drone, and says how long the abandoned attempt had run. With \"gms_series_mismatch\" the reset was only noticed at the pilot's next lap, and nothing is known about the attempt.",
   "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
   "properties": {
-    "event_type": { "const": "pilot_reset" },
-    "actor":      { "type": "integer", "description": "Photon actor number" },
-    "nick":       { "type": "string" },
-    "reason":     { "type": "string", "description": "Reset reason (e.g. drone_reset)" }
+    "event_type":   { "const": "pilot_reset" },
+    "actor":        { "type": "integer", "description": "Photon actor number" },
+    "nick":         { "type": "string" },
+    "reason":       { "type": "string", "description": "\"respawn\" (seen as it happened) or \"gms_series_mismatch\" (inferred at the next lap)" },
+    "attempt_ms":   { "type": "integer", "minimum": 0, "description": "respawn only: how long the abandoned attempt ran, from attempt_from to the reset" },
+    "attempt_from": { "type": "string", "enum": ["lap", "respawn"], "description": "respawn only: \"lap\" when the pilot was flying on from a completed lap; \"respawn\" when measured from their previous respawn, so including the wait at the start and the run-up to the line" },
+    "laps_in_run":  { "type": "integer", "minimum": 0, "description": "respawn only: laps completed since the pilot's previous respawn" }
   },
   "required": ["actor", "nick", "reason"]
 }

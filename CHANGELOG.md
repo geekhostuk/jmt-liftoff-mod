@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
+## [Unreleased]
+
+### Changed
+
+- **A reset is reported the moment it happens, with the attempt it abandoned.** The
+  game republishes a pilot's `GMS` player property, with no lap list, when it respawns
+  their drone — about 0.6s before the drone reappears at the start. `pilot_reset` is
+  now sent then, with `reason: "respawn"`, `attempt_ms` (how long the attempt had run),
+  `attempt_from` (`lap` when flying on from a completed lap, `respawn` otherwise) and
+  `laps_in_run`. Arriving — joining, a track change, the plugin starting — is not a
+  reset, and the double publish a respawn makes is sent once.
+
+  Until now a reset was only inferred when the pilot's *next* lap arrived and the `GMS`
+  lap series no longer continued the one kept: late, silent about the attempt, and never
+  at all for a pilot who reset and then left or stopped. That inference stays as a
+  fallback (`reason: "gms_series_mismatch"`) for a respawn whose update never arrived.
+
+- **`GMS` laps are compared with the pilot's current run, not every lap they have
+  flown.** The list `GMS` carries holds the laps since the last respawn; it is now
+  tracked on its own, so event200 laps no longer take part in the comparison.
+
 ## [1.1.0] — 2026-08-31
 
 ### Fixed

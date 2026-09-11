@@ -97,7 +97,13 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private bool _photonTuningApplied;
     private int _photonTuningLastSignature;
     private DateTime _suppressEvent200Until = DateTime.MinValue;
-    private readonly Dictionary<int, int> _actorGmsBaseline = new();
+    // The laps of each pilot's current run, as GMS last reported them. A run is everything
+    // since the pilot's last respawn: GMS grows it one lap at a time and a respawn empties it.
+    private readonly Dictionary<int, List<int>> _actorGmsRun = new();
+    // When each pilot last respawned, and last finished a lap, in the current race. Between
+    // them they say how long the attempt a reset abandons had been running.
+    private readonly Dictionary<int, DateTime> _actorSpawnUtc = new();
+    private readonly Dictionary<int, DateTime> _actorLastLapUtc = new();
     // True only until the first StartNewRace() call. Controls whether the GMS
     // baseline-detection heuristic runs. At plugin startup it prevents pre-session
     // laps from being recorded; after any race reset the game resets GMS data so
@@ -1024,6 +1030,9 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _actorToUserId.Remove(otherPlayer.ActorNumber);
         _lastKnownPosition.Remove(otherPlayer.ActorNumber);
         _lastActivityEmitUtc.Remove(otherPlayer.ActorNumber);
+        _actorGmsRun.Remove(otherPlayer.ActorNumber);
+        _actorSpawnUtc.Remove(otherPlayer.ActorNumber);
+        _actorLastLapUtc.Remove(otherPlayer.ActorNumber);
         AppendStateLine($"Player left room: Actor={otherPlayer.ActorNumber} Nick=\"{otherPlayer.NickName}\"");
         AppendRaceEvent("player_left", new Dictionary<string, object?>
         {
@@ -1494,6 +1503,12 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             {
                 MergeGmsLapSeries(actor, lapTimesSec);
             }
+            else if (!gmsText.Contains("Single[]"))
+            {
+                // No lap list at all. The game republishes a pilot's GMS, empty, the moment it
+                // respawns their drone — about 0.6s before the drone reappears at the start.
+                OnGmsRespawn(actor);
+            }
         }
 
         if (TryGetInt(changedProps, "RS", out var rs))
@@ -1519,6 +1534,43 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         }
     }
 
+    // A respawn republishes GMS twice, back to back, when a pilot joins or the track changes,
+    // and a pilot can press reset twice inside a second. Neither is an attempt worth reporting.
+    private static readonly TimeSpan RespawnDebounce = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// A pilot's drone has just respawned. Unless this is them arriving — the first spawn a
+    /// race sees for them — they reset, and the attempt they abandoned is reported now rather
+    /// than when their next lap happens to arrive, which for a pilot who resets and leaves is never.
+    /// </summary>
+    private void OnGmsRespawn(int actor)
+    {
+        var now = DateTime.UtcNow;
+        var hadSpawn = _actorSpawnUtc.TryGetValue(actor, out var lastSpawn);
+        var hadLap = _actorLastLapUtc.TryGetValue(actor, out var lastLap);
+        _actorSpawnUtc[actor] = now;
+
+        if (hadSpawn && now - lastSpawn < RespawnDebounce)
+            return;
+        if (!hadSpawn && !hadLap)
+            return; // arriving: the track change, joining, or this plugin starting
+        if (_actorLapState.TryGetValue(actor, out var state) && state.IsComplete)
+            return;
+
+        var lapsInRun = _actorGmsRun.TryGetValue(actor, out var run) ? run.Count : 0;
+        // Flying on from a lap, the abandoned attempt began as that lap ended. Otherwise it
+        // began at the last respawn, so it includes the wait there and the run-up to the line.
+        var fromLap = hadLap && (!hadSpawn || lastLap > lastSpawn);
+        var attemptMs = (int)(now - (fromLap ? lastLap : lastSpawn)).TotalMilliseconds;
+
+        ResetPilotState(actor, "respawn", new Dictionary<string, object?>
+        {
+            ["attempt_ms"] = attemptMs,
+            ["attempt_from"] = fromLap ? "lap" : "respawn",
+            ["laps_in_run"] = lapsInRun,
+        });
+    }
+
     private void MergeGmsLapSeries(int actor, List<float> lapTimesSec)
     {
         var incoming = lapTimesSec.Select(v => (int)Math.Round(v * 1000d)).ToList();
@@ -1526,52 +1578,42 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             return;
 
         var state = GetOrCreatePilotLapState(actor, string.Empty);
-        var existing = state.LapTimesMs;
-
         if (state.IsComplete)
             return;
 
-        // Strip any pre-session laps from the incoming series using the baseline.
-        // The baseline is set the first time we see GMS data for a pilot who has no
-        // event200 history — those laps were recorded before this plugin session started.
-        if (_actorGmsBaseline.TryGetValue(actor, out var baseline))
+        // GMS carries the laps of the pilot's current run and grows by one as each lap ends;
+        // a respawn empties it (OnGmsRespawn). So the list is compared with the run last seen,
+        // not with every lap the pilot has flown — event200 laps included — this race.
+        if (!_actorGmsRun.TryGetValue(actor, out var run))
         {
-            if (incoming.Count <= baseline)
-                return; // nothing new beyond the stale baseline
-            incoming = incoming.Skip(baseline).ToList();
-        }
-        else if (existing.Count == 0 && _needGmsBaseline)
-        {
-            // First GMS update at plugin startup for this actor with no event200 laps yet.
-            // The incoming series may contain laps from before this plugin session started;
-            // record the count as a baseline and skip them. After a race reset this block
-            // is skipped (_needGmsBaseline = false) because the game resets GMS data on
-            // track change, so all incoming laps are genuine new laps on the new track.
-            _actorGmsBaseline[actor] = incoming.Count;
-            _log.LogInfo($"[Recording] GMS baseline set for actor {actor}: {incoming.Count} pre-session lap(s) skipped");
-            return;
+            if (_needGmsBaseline && state.LapTimesMs.Count == 0 && !_actorSpawnUtc.ContainsKey(actor))
+            {
+                // First sight of this pilot since the plugin started, part way through a run
+                // that may hold laps flown before it. Remember them, so only laps added from
+                // here on are recorded. A pilot seen respawning since is on a run that began
+                // after we did, and after a race reset the game starts every run afresh.
+                _actorGmsRun[actor] = incoming;
+                _log.LogInfo($"[Recording] GMS baseline set for actor {actor}: {incoming.Count} pre-session lap(s) skipped");
+                return;
+            }
+            run = new List<int>();
         }
 
-        if (existing.Count == 0)
+        if (IsPrefix(run, incoming))
+            return; // nothing new
+
+        if (!IsPrefix(incoming, run))
         {
-            foreach (var lapMs in incoming)
-                RecordLapTime(actor, string.Empty, lapMs, "gms");
-            return;
+            // The run started again without the respawn that announces it reaching us.
+            // Report the reset late rather than not at all.
+            ResetPilotState(actor, "gms_series_mismatch");
+            run = new List<int>();
         }
 
-        if (IsPrefix(existing, incoming))
-            return;
-
-        if (IsPrefix(incoming, existing))
-        {
-            for (var i = existing.Count; i < incoming.Count; i++)
-                RecordLapTime(actor, string.Empty, incoming[i], "gms");
-            return;
-        }
-
-        ResetPilotState(actor, "gms_series_mismatch");
-        foreach (var lapMs in incoming)
-            RecordLapTime(actor, string.Empty, lapMs, "gms");
+        for (var i = run.Count; i < incoming.Count; i++)
+            RecordLapTime(actor, string.Empty, incoming[i], "gms");
+        _actorGmsRun[actor] = incoming;
+        _actorLastLapUtc[actor] = DateTime.UtcNow;
     }
 
     private void RecordLapTime(int actor, string guid, int lapMs, string source)
@@ -1647,7 +1689,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         return true;
     }
 
-    private void ResetPilotState(int actor, string reason)
+    private void ResetPilotState(int actor, string reason, Dictionary<string, object?>? detail = null)
     {
         if (_actorLapState.TryGetValue(actor, out var state))
         {
@@ -1657,14 +1699,23 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
         _actorLapState.Remove(actor);
         _actorLastCheckpointId.Remove(actor);
-        _actorGmsBaseline.Remove(actor);
-        AppendRaceLine($"PILOT_RESET actor={actor} nick=\"{ResolveNick(actor)}\" reason={reason}");
-        AppendRaceEvent("pilot_reset", new Dictionary<string, object?>
+        _actorGmsRun.Remove(actor);
+
+        var payload = new Dictionary<string, object?>
         {
             ["actor"] = actor,
             ["nick"] = ResolveNick(actor),
             ["reason"] = reason
-        });
+        };
+        var extra = string.Empty;
+        if (detail != null)
+        {
+            foreach (var kv in detail)
+                payload[kv.Key] = kv.Value;
+            extra = " " + string.Join(" ", detail.Select(kv => $"{kv.Key}={kv.Value}"));
+        }
+        AppendRaceLine($"PILOT_RESET actor={actor} nick=\"{ResolveNick(actor)}\" reason={reason}{extra}");
+        AppendRaceEvent("pilot_reset", payload);
     }
 
     /// <summary>
@@ -1700,7 +1751,9 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _actorToRaceState.Clear();
         _raceParticipants.Clear();
         _actorLastCheckpointId.Clear();
-        _actorGmsBaseline.Clear();
+        _actorGmsRun.Clear();
+        _actorSpawnUtc.Clear();
+        _actorLastLapUtc.Clear();
         _needGmsBaseline = false;
         CheckpointHookService.ResetGateTracking();
         _competitionClient?.SetRaceContext(_raceId, _raceOrdinal);
