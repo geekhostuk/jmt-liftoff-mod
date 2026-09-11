@@ -104,6 +104,15 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     // them they say how long the attempt a reset abandons had been running.
     private readonly Dictionary<int, DateTime> _actorSpawnUtc = new();
     private readonly Dictionary<int, DateTime> _actorLastLapUtc = new();
+    // Every lap recorded for each pilot lately, with its source, so the second report of one
+    // crossing is recognised. Kept apart from the lap state on purpose: a respawn clears that,
+    // and the second report routinely lands after the pilot has reset.
+    private readonly Dictionary<int, List<(int Ms, string Source, DateTime At)>> _actorRecentLaps = new();
+    // gms and event200 report the same crossing a rounding error apart: 546 of 564 event200
+    // laps in a week of logs, 519 of them 1ms quicker and 26 identical. The second report
+    // lands a median 4s after the first but as late as 288s, after laps flown in between.
+    private static readonly TimeSpan TwinWindow = TimeSpan.FromMinutes(10);
+    private const int TwinMs = 2;
     // True only until the first StartNewRace() call. Controls whether the GMS
     // baseline-detection heuristic runs. At plugin startup it prevents pre-session
     // laps from being recorded; after any race reset the game resets GMS data so
@@ -1033,6 +1042,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _actorGmsRun.Remove(otherPlayer.ActorNumber);
         _actorSpawnUtc.Remove(otherPlayer.ActorNumber);
         _actorLastLapUtc.Remove(otherPlayer.ActorNumber);
+        _actorRecentLaps.Remove(otherPlayer.ActorNumber);
         AppendStateLine($"Player left room: Actor={otherPlayer.ActorNumber} Nick=\"{otherPlayer.NickName}\"");
         AppendRaceEvent("player_left", new Dictionary<string, object?>
         {
@@ -1616,6 +1626,24 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _actorLastLapUtc[actor] = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Whether this lap is the other source's report of a crossing already recorded. Two
+    /// sources within TwinMs of each other is the signature; one source doing it twice is a
+    /// pilot flying two very similar laps, and those are both kept. Every recent lap is
+    /// compared rather than the last, because the second report can follow laps flown since.
+    /// </summary>
+    private bool IsSecondReport(int actor, int lapMs, string source)
+    {
+        var now = DateTime.UtcNow;
+        if (!_actorRecentLaps.TryGetValue(actor, out var recent))
+            _actorRecentLaps[actor] = recent = new List<(int Ms, string Source, DateTime At)>();
+        recent.RemoveAll(l => now - l.At > TwinWindow);
+        if (recent.Any(l => l.Source != source && Math.Abs(l.Ms - lapMs) <= TwinMs))
+            return true;
+        recent.Add((lapMs, source, now));
+        return false;
+    }
+
     private void RecordLapTime(int actor, string guid, int lapMs, string source)
     {
         if (DateTime.UtcNow < _suppressEvent200Until)
@@ -1628,6 +1656,12 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         if (minMs > 0 && lapMs < minMs)
         {
             _log.LogWarning($"[Recording] Lap ignored (too short): actor={actor} lapMs={lapMs} minLapMs={minMs}");
+            return;
+        }
+
+        if (IsSecondReport(actor, lapMs, source))
+        {
+            _log.LogInfo($"[Recording] Lap dropped as the other source's report of one already recorded: actor={actor} lapMs={lapMs} source={source}");
             return;
         }
 

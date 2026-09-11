@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
-## [Unreleased]
+## [1.2.0] — 2026-09-11
 
 ### Changed
 
@@ -20,6 +20,15 @@ All notable changes to this project are documented here. The format is based on
   lap series no longer continued the one kept: late, silent about the attempt, and never
   at all for a pilot who reset and then left or stopped. That inference stays as a
   fallback (`reason: "gms_series_mismatch"`) for a respawn whose update never arrived.
+
+- **One crossing is one lap.** The plugin hears most laps twice — from `GMS` and
+  again from Photon event 200 — a rounding error apart and under different lap
+  numbers: 546 of 564 event200 laps in a week of logs were a `GMS` lap repeated,
+  519 of them 1ms quicker. Both were sent, so a pilot's lap count ran over what
+  they flew and the quicker copy could become their best. A lap within 2ms of one
+  the other source reported for the same pilot in the last ten minutes is now
+  dropped; the copy lands a median 4s after the original but as late as 288s,
+  after laps flown in between, so every recent lap is compared, not just the last.
 
 - **`GMS` laps are compared with the pilot's current run, not every lap they have
   flown.** The list `GMS` carries holds the laps since the last respawn; it is now
@@ -121,5 +130,6 @@ No behavioural changes to telemetry, the track-control layer, or the server
 protocol — the wire vocabulary in [`contracts/`](contracts/) is unchanged from
 `LiftoffRaceBot`, other than the plugin name reported in `session_started`.
 
+[1.2.0]: https://github.com/geekhostuk/jmt-liftoff-mod/releases/tag/v1.2.0
 [1.1.0]: https://github.com/geekhostuk/jmt-liftoff-mod/releases/tag/v1.1.0
 [1.0.0]: https://github.com/geekhostuk/jmt-liftoff-mod/releases/tag/v1.0.0
