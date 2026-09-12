@@ -44,6 +44,18 @@ Header   : Authorization: Bearer <ApiKey>
    10,000; overflow is dropped and counted) and flushed in order whenever the
    socket is up.
 
+   **Track changes.** A race runs from one `race_reset` to the next.
+   - A `set_track` or `next_track` starts its race as the command arrives
+     (`reason: "track_change"`), before the game has loaded the new track, so
+     the room still reports the old one then. Once the room names the new track,
+     the plugin sends `track_changed` with `commanded: true`.
+   - A track picked in game sends `track_changed` with `commanded: false`, then
+     `race_reset` with `reason: "room_track_change"`.
+
+   A server that labels a race with the room's track should take the track from
+   `track_changed` (or the next `keepalive`), not from what it held at the
+   `race_reset`.
+
 3. **`keepalive`** is sent every 60 s (compiled default) while the bot is in a
    room. It doubles as the bot's status report:
 

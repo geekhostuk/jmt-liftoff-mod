@@ -97,6 +97,11 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private bool _photonTuningApplied;
     private int _photonTuningLastSignature;
     private DateTime _suppressEvent200Until = DateTime.MinValue;
+    // The room's track, read a few times a second so a track picked in game starts a race
+    // the way a track command does. See WatchRoomTrack.
+    private readonly RoomTrackWatcher _roomTrack = new();
+    private DateTime _nextRoomTrackCheckUtc = DateTime.MinValue;
+    private static readonly TimeSpan RoomTrackCheckInterval = TimeSpan.FromMilliseconds(250);
     // The laps of each pilot's current run, as GMS last reported them. A run is everything
     // since the pilot's last respawn: GMS grows it one lap at a time and a respawn empties it.
     private readonly Dictionary<int, List<int>> _actorGmsRun = new();
@@ -467,6 +472,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                 var graceSecs = _trackChangeGraceSecs.Value;
                 _suppressEvent200Until = DateTime.UtcNow.AddSeconds(graceSecs);
                 _log.LogInfo($"[Recording] Track change — suppressing lap events for {graceSecs}s");
+                // The room's change, when it comes, is this command's and its race starts now.
+                _roomTrack.ExpectChange(DateTime.UtcNow);
                 StartNewRace("track_change");
                 EmitPlayerList();
                 try { DisableLiftoffInactivityKick(); } catch { /* best effort */ }
@@ -610,6 +617,68 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private float _nextGameKeepalive;
     private ConfigEntry<int> _gameKeepaliveIntervalSecs = null!;
 
+    /// <summary>
+    /// Starts a race when the room moves to another track in game. A track command starts its
+    /// own as it arrives (onTrackChanging), before anything has loaded; a track the host picks
+    /// in game starts none, and without this its laps run on under the last track's race.
+    /// Either way the server hears <c>track_changed</c> as soon as the room names the new
+    /// track, rather than a keepalive up to a minute later.
+    /// </summary>
+    private void WatchRoomTrack()
+    {
+        var now = DateTime.UtcNow;
+        if (now < _nextRoomTrackCheckUtc)
+            return;
+        _nextRoomTrackCheckUtc = now + RoomTrackCheckInterval;
+
+        var from = _roomTrack.Current;
+        var change = _roomTrack.Observe(ReadRoomTrack(), now);
+        if (change == RoomTrackChange.None || _roomTrack.Current is not { } to)
+            return;
+
+        var commanded = change == RoomTrackChange.Commanded;
+        _log.LogInfo($"[Recording] Room track changed {(commanded ? "as commanded" : "in game")}: {from} -> {to}");
+        var payload = new Dictionary<string, object?>
+        {
+            ["env"] = to.Env,
+            ["track"] = to.Track,
+            ["race"] = to.Race,
+            ["commanded"] = commanded,
+        };
+        if (to.WorkshopId.Length > 0)
+            payload["workshop_id"] = to.WorkshopId;
+        AppendRaceEvent("track_changed", payload);
+        if (commanded)
+            return;
+
+        var graceSecs = _trackChangeGraceSecs.Value;
+        _suppressEvent200Until = now.AddSeconds(graceSecs);
+        _log.LogInfo($"[Recording] Track changed in game — suppressing lap events for {graceSecs}s");
+        StartNewRace("room_track_change");
+        EmitPlayerList();
+    }
+
+    /// <summary>The room's track as its properties have it, or null outside a room.</summary>
+    private static RoomTrack? ReadRoomTrack()
+    {
+        if (!PhotonNetwork.InRoom)
+            return null;
+        var props = PhotonNetwork.CurrentRoom?.CustomProperties;
+        if (props == null)
+            return null;
+
+        string Named(string key) =>
+            props.TryGetValue(key, out var value)
+                ? ReflectionHelper.GetMemberValue(value, "Name") as string ?? value?.ToString() ?? ""
+                : "";
+
+        return new RoomTrack(
+            props.TryGetValue("E", out var env) ? env as string ?? "" : "",
+            Named("T"),
+            Named("R"),
+            props.TryGetValue("W", out var workshopId) ? workshopId?.ToString() ?? "" : "");
+    }
+
     protected void Update()
     {
         // Watchdog liveness beacon — must be first so any blocking work below is
@@ -627,6 +696,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _multiplayerTrackControl?.Update();
         _competitionClient?.Update();
         _botStatsOverlay?.Update();
+        WatchRoomTrack();
 
         // After a Photon disconnect+reconnect, send a fresh player list so the
         // server drops stale players from the old lobby.

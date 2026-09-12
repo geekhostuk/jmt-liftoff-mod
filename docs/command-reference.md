@@ -74,6 +74,7 @@ timeout as "unsupported or unreachable".
 | [`gate_passed`](../contracts/gate_passed.json) | Harmony hook, in-race only | `actor`, `nick`, `checkpoint_id`, `trigger_id`, `gate_time_sec` |
 | [`sector_split`](../contracts/sector_split.json) | In-race only | `actor`, `sector_index`, `from_gate`, `to_gate`, `sector_ms` |
 | [`race_end`](../contracts/race_end.json) | Both | `participants`, `completed`, `winner_actor`, `winner_nick`, `winner_total_ms` |
+| [`race_reset`](../contracts/race_reset.json) | A new race starts | `reason` (`track_change` / `room_track_change` / `room_sgso_start` / `actor_<n>_rs_reset`), `previous_race_id` |
 
 ```json
 { "event_type": "lap_recorded", "timestamp_utc": "…", "session_id": "…",
@@ -98,11 +99,11 @@ timeout as "unsupported or unreachable".
 | `event_type` | When | Key fields |
 |---|---|---|
 | [`track_catalog`](../contracts/track_catalog.json) | After `request_catalog` | `environments[]` → `{ name, tracks[] → { name, race, workshop_id } }` |
-| [`track_changed`](../contracts/track_changed.json) | Active track changes | `env`, `track`, `race` |
+| [`track_changed`](../contracts/track_changed.json) | The room names a new track, whether a command or the host in game changed it. After an in-game change (`commanded: false`) a `race_reset` with `room_track_change` follows | `env`, `track`, `race`, `workshop_id`, `commanded` |
 
 ### Server-side broadcast events
 
 The remaining schemas in `contracts/` (`competition_*`, `playlist_state`,
-`state_snapshot`, `pilot_*`, `race_reset`, `checkpoint`) describe events the
+`state_snapshot`, `pilot_*`, `checkpoint`) describe events the
 **server** derives and broadcasts to browser/dashboard clients — they are part of
 the wider contract set for reference, but are not sent by the plugins.

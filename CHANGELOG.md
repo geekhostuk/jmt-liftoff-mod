@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
+## [1.3.0] — 2026-09-12
+
+### Added
+
+- **A track picked in game starts a race.** Only `set_track` and `next_track` used to
+  start one, so when the host changed track from the game's own menu, the laps flown
+  on the new track went on under the previous track's race. The plugin now reads the
+  room's track (properties `E`, `T`, `R` and `W`) four times a second. When it names
+  a different track and has held it for half a second, the plugin sends
+  `track_changed` with `commanded: false`, then `race_reset` with
+  `reason: "room_track_change"`. Lap events are suppressed for the same grace period
+  as after a command.
+
+- **`track_changed` is sent, as documented.** It was listed as a plugin event but
+  never sent. It now goes out whenever the room names a new track, with `env`,
+  `track`, `race`, `commanded` and, when the room has one, `workshop_id`.
+  - A command's change arrives with `commanded: true`, and no second race. The race
+    started when the command arrived, before the new track loaded and while the room
+    still named the old one.
+  - This is how a server learns the new track the moment the room has it, not from a
+    `keepalive` up to a minute later.
+
+  A change within 60 seconds of a track command counts as that command's.
+
 ## [1.2.0] — 2026-09-11
 
 ### Changed

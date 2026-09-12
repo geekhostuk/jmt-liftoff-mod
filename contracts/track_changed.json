@@ -2,13 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "track_changed.json",
   "title": "track_changed",
-  "description": "Broadcast by the server when the active track changes",
-  "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
+  "description": "Sent by the plugin as soon as the room names a track other than the one it was on, whoever changed it. A change a set_track or next_track asked for (commanded) had its race_reset when the command arrived. Any other change, such as a track the host picked in game, is followed straight away by a race_reset with reason room_track_change. Carries the race_id of the race running when the room changed.",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
   "properties": {
-    "event_type": { "const": "track_changed" },
-    "env":        { "type": "string", "description": "Environment/scene name" },
-    "track":      { "type": "string", "description": "Track name" },
-    "race":       { "type": "string", "description": "Race mode" }
+    "event_type":  { "const": "track_changed" },
+    "env":         { "type": "string", "description": "Environment/scene name (room property E)" },
+    "track":       { "type": "string", "description": "Track name (room property T)" },
+    "race":        { "type": "string", "description": "Race name (room property R)" },
+    "workshop_id": { "type": "string", "description": "Room property W, only when the room carries one" },
+    "commanded":   { "type": "boolean", "description": "True when this is the change a set_track or next_track asked for" }
   },
-  "required": ["env", "track", "race"]
+  "required": ["env", "track", "race", "commanded"]
 }
