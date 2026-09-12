@@ -18,6 +18,6 @@
     "max_players":   { "type": "integer", "minimum": 0, "description": "Room max players setting" },
     "is_host":       { "type": "boolean", "description": "Whether this bot is the Photon master client" },
     "is_open":       { "type": "boolean", "description": "Whether the room is open for joining" },
-    "workshop_id":   { "type": "string", "description": "Steam Workshop ID of current track (best-effort, may be absent)" }
+    "workshop_id":   { "type": "string", "description": "Steam Workshop ID of the race being flown, else of its track, read off the room's content (ManagedID). Absent when there is none, as for Liftoff's own tracks" }
   }
 }

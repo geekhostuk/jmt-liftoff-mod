@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
+## [1.3.1] — 2026-09-12
+
+### Fixed
+
+- **The Workshop id of the course being flown is sent.** `track_changed` and
+  `keepalive` took it from the room property `W`, or from members named `WorkshopID`,
+  `workshopId` or `SteamWorkshopId` on the room's track. Liftoff sets none of those,
+  so no event ever carried one, and a server could only match a course by its name,
+  which is often not its Workshop title. The room's `T` and `R` are the game's
+  `GameContentEntry`, and each carries the Workshop id as `ManagedID`. The plugin now
+  sends the race's, else the track's, with `W` as a last resort. Only an all-digit id
+  is sent: Liftoff's own tracks have none.
+
+### Added
+
+- When the room names a track with no Workshop id, the log records the type and
+  members of its `T` and `R` properties, so a game update that moves the id shows up
+  there rather than as courses quietly losing their links.
+
 ## [1.3.0] — 2026-09-12
 
 ### Added

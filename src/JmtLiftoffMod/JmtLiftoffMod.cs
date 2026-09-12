@@ -638,6 +638,11 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
         var commanded = change == RoomTrackChange.Commanded;
         _log.LogInfo($"[Recording] Room track changed {(commanded ? "as commanded" : "in game")}: {from} -> {to}");
+        // Without an id a server can only match the name, and a name is often not the
+        // Workshop title. Say what the room holds, so a game update that moves the id
+        // shows up here rather than as courses quietly losing their links.
+        if (to.WorkshopId.Length == 0)
+            _log.LogInfo($"[Recording] No Workshop id for {to}: {DescribeRoomContent()}");
         var payload = new Dictionary<string, object?>
         {
             ["env"] = to.Env,
@@ -667,16 +672,43 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         if (props == null)
             return null;
 
-        string Named(string key) =>
-            props.TryGetValue(key, out var value)
-                ? ReflectionHelper.GetMemberValue(value, "Name") as string ?? value?.ToString() ?? ""
-                : "";
-
+        props.TryGetValue("T", out var track);
+        props.TryGetValue("R", out var race);
+        props.TryGetValue("W", out var workshopId);
         return new RoomTrack(
             props.TryGetValue("E", out var env) ? env as string ?? "" : "",
-            Named("T"),
-            Named("R"),
-            props.TryGetValue("W", out var workshopId) ? workshopId?.ToString() ?? "" : "");
+            ContentName(track),
+            ContentName(race),
+            RoomTrack.WorkshopIdOf(race, track, workshopId));
+    }
+
+    private static string ContentName(object? content) =>
+        content == null
+            ? ""
+            : ReflectionHelper.GetMemberValue(content, "Name") as string ?? content.ToString() ?? "";
+
+    /// <summary>What the room's <c>T</c> and <c>R</c> properties are: type and member names.</summary>
+    private static string DescribeRoomContent()
+    {
+        var props = PhotonNetwork.CurrentRoom?.CustomProperties;
+        if (props == null)
+            return "no room";
+
+        static string Describe(object? value)
+        {
+            if (value == null)
+                return "absent";
+            var type = value.GetType();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var members = type.GetFields(flags).Select(f => f.Name)
+                .Concat(type.GetProperties(flags).Select(p => p.Name))
+                .Take(30);
+            return $"{type.FullName} {{{string.Join(", ", members)}}}";
+        }
+
+        props.TryGetValue("T", out var track);
+        props.TryGetValue("R", out var race);
+        return $"T is {Describe(track)}; R is {Describe(race)}";
     }
 
     protected void Update()

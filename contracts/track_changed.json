@@ -9,7 +9,7 @@
     "env":         { "type": "string", "description": "Environment/scene name (room property E)" },
     "track":       { "type": "string", "description": "Track name (room property T)" },
     "race":        { "type": "string", "description": "Race name (room property R)" },
-    "workshop_id": { "type": "string", "description": "Room property W, only when the room carries one" },
+    "workshop_id": { "type": "string", "description": "Steam Workshop ID of the race being flown, else of its track, read off the room's content (ManagedID); room property W as a last resort. Only when there is one: Liftoff's own tracks have none" },
     "commanded":   { "type": "boolean", "description": "True when this is the change a set_track or next_track asked for" }
   },
   "required": ["env", "track", "race", "commanded"]

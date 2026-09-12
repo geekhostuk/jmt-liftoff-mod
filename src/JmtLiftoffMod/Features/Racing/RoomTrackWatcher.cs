@@ -1,11 +1,12 @@
 using System;
+using JmtLiftoffMod.Features.MultiplayerTrackControl;
 
 namespace JmtLiftoffMod.Features.Racing;
 
 /// <summary>
 /// What the room says is being flown, from its Photon properties: the environment
-/// (<c>E</c>), the track and race by name (<c>T</c>, <c>R</c>) and the Workshop id
-/// (<c>W</c>) when the room carries one.
+/// (<c>E</c>), the track and race (<c>T</c>, <c>R</c>) and the Workshop id, when one
+/// can be found (see <see cref="WorkshopIdOf"/>).
 /// </summary>
 public sealed class RoomTrack : IEquatable<RoomTrack>
 {
@@ -22,6 +23,42 @@ public sealed class RoomTrack : IEquatable<RoomTrack>
     public string Race { get; }
     public string WorkshopId { get; }
 
+    /// <summary>
+    /// The Workshop id of what the room is flying, or empty when there is none to find.
+    /// The room's <c>R</c> and <c>T</c> are <c>Liftoff.Multiplayer.GameContentEntry</c>,
+    /// whose <c>ManagedID</c> string is the <c>managedID</c> of the .race or .track file:
+    /// the Workshop id. The game sets no room property for it. The race is asked first,
+    /// because a Workshop course is loaded as its Race item; then the track; then
+    /// <c>W</c>, for a room that does carry one. A <c>ManagedID</c> holding a <c>str</c>,
+    /// the shape of the game's other content objects, is read too. Only digits count:
+    /// Liftoff's own tracks have no Workshop id, and a wrong one would file laps under
+    /// another course.
+    /// </summary>
+    public static string WorkshopIdOf(object? race, object? track, object? roomWorkshopId)
+    {
+        foreach (var content in new[] { race, track })
+        {
+            var managed = ReflectionHelper.GetMemberValue(content, "ManagedID");
+            var id = managed as string
+                     ?? (ReflectionHelper.TryGetNestedString(managed, out var nested, "str") ? nested : "");
+            if (IsWorkshopId(id))
+                return id;
+        }
+
+        var w = roomWorkshopId?.ToString() ?? "";
+        return IsWorkshopId(w) ? w : "";
+    }
+
+    private static bool IsWorkshopId(string value)
+    {
+        foreach (var c in value)
+        {
+            if (c < '0' || c > '9')
+                return false;
+        }
+        return value.Length > 0;
+    }
+
     public bool Equals(RoomTrack? other) =>
         other != null && Env == other.Env && Track == other.Track
         && Race == other.Race && WorkshopId == other.WorkshopId;
@@ -30,7 +67,8 @@ public sealed class RoomTrack : IEquatable<RoomTrack>
 
     public override int GetHashCode() => (Env, Track, Race, WorkshopId).GetHashCode();
 
-    public override string ToString() => $"{Env}/{Track} ({Race})";
+    public override string ToString() =>
+        $"{Env}/{Track} ({Race})" + (WorkshopId.Length > 0 ? $" #{WorkshopId}" : "");
 }
 
 public enum RoomTrackChange

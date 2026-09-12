@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using BepInEx.Logging;
 using JmtLiftoffMod.Features.Diagnostics;
 using JmtLiftoffMod.Features.MultiplayerTrackControl;
+using JmtLiftoffMod.Features.Racing;
 using Photon.Pun;
 using SyncContext = System.Threading.SynchronizationContext;
 
@@ -353,21 +354,11 @@ internal sealed class CompetitionClient : IDisposable
             if (room.CustomProperties.TryGetValue("E", out var e))
                 env = e as string ?? "";
             if (room.CustomProperties.TryGetValue("T", out var t))
-            {
                 track = ReflectionHelper.GetMemberValue(t, "Name") as string ?? t?.ToString() ?? "";
-                // Attempt to extract workshop ID from the track content object
-                var wid = ReflectionHelper.GetMemberValue(t, "WorkshopID")
-                       ?? ReflectionHelper.GetMemberValue(t, "workshopId")
-                       ?? ReflectionHelper.GetMemberValue(t, "SteamWorkshopId");
-                if (wid != null)
-                    workshopId = wid.ToString() ?? "";
-            }
             if (room.CustomProperties.TryGetValue("R", out var r))
                 race = ReflectionHelper.GetMemberValue(r, "Name") as string ?? r?.ToString() ?? "";
-
-            // Also try room-level workshop ID property
-            if (string.IsNullOrEmpty(workshopId) && room.CustomProperties.TryGetValue("W", out var w))
-                workshopId = w?.ToString() ?? "";
+            room.CustomProperties.TryGetValue("W", out var w);
+            workshopId = RoomTrack.WorkshopIdOf(r, t, w);
 
             var roomName = room.Name ?? "";
             var playerCount = room.PlayerCount;
