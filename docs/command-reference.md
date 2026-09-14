@@ -69,11 +69,11 @@ timeout as "unsupported or unreachable".
 
 | `event_type` | Source | Key fields |
 |---|---|---|
-| [`lap_recorded`](../contracts/lap_recorded.json) | Both plugins (Photon event 200) | `actor`, `nick`, `pilot_guid`, `steam_id`, `lap_number`, `lap_ms`, `delta_prev_ms`, `delta_best_ms`, `source` |
+| [`lap_recorded`](../contracts/lap_recorded.json) | The pilot's GMS player property (`source: gms`) or Photon event 200 (`source: event200`). Both usually report the same crossing, and the second report is dropped | `actor`, `nick`, `pilot_guid`, `steam_id`, `lap_number`, `lap_ms`, `delta_prev_ms`, `delta_best_ms`, `source` |
+| [`pilot_active`](../contracts/pilot_active.json) | The drone moves (event 201) or a player property changes; at most once every 5 s per pilot | `actor`, `nick`, `source` (`movement` / `property_change`), `detail` |
 | [`pilot_reset`](../contracts/pilot_reset.json) | GMS player property, as the drone respawns | `actor`, `nick`, `reason` (`respawn` / `gms_series_mismatch`); for `respawn` also `attempt_ms`, `attempt_from` (`lap` / `respawn`), `laps_in_run` |
-| [`gate_passed`](../contracts/gate_passed.json) | Harmony hook, in-race only | `actor`, `nick`, `checkpoint_id`, `trigger_id`, `gate_time_sec` |
-| [`sector_split`](../contracts/sector_split.json) | In-race only | `actor`, `sector_index`, `from_gate`, `to_gate`, `sector_ms` |
-| [`race_end`](../contracts/race_end.json) | Both | `participants`, `completed`, `winner_actor`, `winner_nick`, `winner_total_ms` |
+| [`pilot_complete`](../contracts/pilot_complete.json) | A pilot finishes: their race state says so, or they reach the lap cap | `actor`, `nick`, `pilot_guid`, `reason` (`race_state_finished` / `lap_count_reached`), `laps_logged`, `lap_times_ms`, `total_ms` |
+| [`race_end`](../contracts/race_end.json) | Every pilot in the race has finished | `participants`, `completed`, `winner_actor`, `winner_nick`, `winner_total_ms` |
 | [`race_reset`](../contracts/race_reset.json) | A new race starts | `reason` (`track_change` / `room_track_change` / `room_sgso_start` / `actor_<n>_rs_reset`), `previous_race_id` |
 
 ```json
@@ -104,6 +104,6 @@ timeout as "unsupported or unreachable".
 ### Server-side broadcast events
 
 The remaining schemas in `contracts/` (`competition_*`, `playlist_state`,
-`state_snapshot`, `pilot_*`, `checkpoint`) describe events the
+`state_snapshot`) describe events the
 **server** derives and broadcasts to browser/dashboard clients — they are part of
 the wider contract set for reference, but are not sent by the plugins.

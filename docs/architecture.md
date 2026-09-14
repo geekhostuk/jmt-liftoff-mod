@@ -34,11 +34,14 @@ connected.
 |---|---|---|
 | `Features/Chat` | `ChatCaptureService` | Captures in-game chat messages and forwards them as `chat_message` events. |
 | `Features/Competition` | `CompetitionClient`, `CompetitionConfig`, `SimpleJsonParser`, `CommandTimingContext` | The server link: persistent WebSocket, event outbox, command dispatch, acks. See [server-protocol.md](server-protocol.md). |
-| `Features/Diagnostics` | `BotStatsOverlay`, `CompetitionStats`, `PhotonRpcNoiseSilencer` | Optional on-screen stats overlay and log-noise suppression. |
+| `Features/Diagnostics` | `BotStatsOverlay`, `CompetitionStats` | Optional on-screen stats overlay. |
 | `Features/Lobby` | `LobbyStatusService` | Emits `lobby_status` snapshots on change or on request. |
-| `Features/Logging` | `FileLogWriter`, `ObjectDescriber` | Structured `.log` and JSONL output under the plugin folder, written on a background thread. |
 | `Features/MultiplayerTrackControl` | `MultiplayerTrackControlService` + 11 supporting types | The host-control layer: discovers Liftoff's multiplayer setup UI (`PopupQuickPlayMultiplayerSetup`, content/room settings panels) **by reflection**, detects host state, and executes track/race/environment/workshop changes and game creation through the game's own UI flow. See [multiplayer-track-control.md](multiplayer-track-control.md). |
-| `Features/Racing` | `CheckpointHookService`, `RaceEventEmitter` | Gate-by-gate timing via a Harmony postfix on `RaceCheckpoint.Trigger()` — emits `gate_passed` and `sector_split`. Only produces data once the client is loaded into a race scene. |
+| `Features/Racing` | `RoomTrackWatcher` | Reads the room's track from its Photon properties, so a track picked in game starts a race and sends `track_changed`. Gate timing is not done here: it lives in the separate [JMT Liftoff Leaderboard](https://github.com/geekhostuk/jmt-liftoff-leaderboard) plugin. |
+
+Laps, resets and the race events are worked out in `Plugin` itself, from Photon
+event 200 and each pilot's `GMS` player property. So are the log files, which a
+background thread writes.
 
 Because everything that touches game internals goes through reflection and
 Harmony, the plugin survives minor game updates: lookups fail soft (logged, not
@@ -52,8 +55,8 @@ executor runs live (`EnableDryRun` defaults to `false`), so:
 - `create_game` opens Liftoff's create-game popup, confirms it, and hosts a real room;
 - `set_track` applies environment / track / race — including Steam Workshop
   content — through the settings panels;
-- the bot's own client loads into the race scene, which is what makes the
-  checkpoint hook fire.
+- the bot's own client loads into the race scene, and changes track from the
+  in-game menu without going back to the lobby.
 
 It is designed for **dedicated hardware**: one machine, one game instance, one bot
 hosting one room, controlled entirely by the server.
@@ -63,8 +66,8 @@ hosting one room, controlled entirely by the server.
 1. **Awake** — Harmony patches, config binds, watchdog start, inactivity-kick
    disable, Photon callback registration.
 2. **Connect** — WebSocket to the server, `session_started` with version + build marker.
-3. **Hosting** — the server drives the room via `create_game` and `set_track`; gate
-   telemetry streams while pilots fly.
+3. **Hosting** — the server drives the room via `create_game` and `set_track`; laps,
+   resets and chat stream while pilots fly.
 4. **Between races** — `navigate_to_lobby` / `leave_lobby` reset state; keepalives
    carry room, track, player-count, host flag and main-thread health throughout.
 
@@ -96,5 +99,5 @@ a rebuild. This keeps deployed configs tiny, self-explanatory, and impossible to
 misconfigure into a broken state.
 
 The important fixed defaults for this build: track control **enabled**, dry-run
-**off**, checkpoint hook **on**, and the unsafe cached-`SetGame`-callback fallback
+**off**, and the unsafe cached-`SetGame`-callback fallback
 **off** (it can corrupt Liftoff's create/settings UI state).

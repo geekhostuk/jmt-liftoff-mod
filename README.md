@@ -17,19 +17,21 @@ happen somewhere. The mod is the piece that lives inside the game and does it:
   mod applies it — environment, track, race, even Steam Workshop content — by
   driving Liftoff's own multiplayer UI. Nobody has to sit at the host machine
   clicking through menus between heats.
-- **Better leaderboards.** Because the mod loads into the race scene as host, it
-  sees every gate, not just the lap total: `gate_passed` and `sector_split` per
-  pilot. That is enough for sector-by-sector comparisons and split-level pace
-  analysis, rather than one number at the end of a lap.
-- **Competitions.** Sessions, laps, gates and players stream to the platform as
+- **Better leaderboards.** The mod reports every lap every pilot flies, read from
+  two independent sources in the game's network traffic, and every reset, with how
+  long the abandoned attempt had run. Gate-by-gate timing is not done here: it
+  lives in the separate
+  [JMT Liftoff Leaderboard](https://github.com/geekhostuk/jmt-liftoff-leaderboard)
+  plugin.
+- **Competitions.** Sessions, laps, resets and players stream to the platform as
   they happen, so standings, points and weekly competition state are computed
   from live race data instead of being typed in afterwards.
 
 The mod sits in a game instance on dedicated hardware and is driven over a
 persistent WebSocket connection — track rotation, race creation, chat
 announcements, player kicks and lobby management are all server-commanded. While
-it hosts the room it records race telemetry from Photon network traffic,
-including **gate-by-gate timing** captured from inside the race scene.
+it hosts the room it records every pilot's laps and resets from Photon network
+traffic.
 
 The protocol between the two halves is documented and schema-defined in
 [`contracts/`](contracts/), so the mod is not locked to the JMT App — any server
@@ -41,8 +43,8 @@ speaking the [documented protocol](docs/server-protocol.md) can drive it.
 │  ┌───────────────────────┐  │   Authorization: Bearer <key>   │  not in this repo    │
 │  │  JMT Liftoff Mod      │◄─┼─────────────────────────────────┼─►                    │
 │  │  • Photon callbacks   │  │  ── events ──────────────────►  │  • persists laps,    │
-│  │  • lap/gate telemetry │  │  session_started, keepalive,    │    gates, players    │
-│  │  • track control via  │  │  lap_recorded, gate_passed, …   │  • drives track      │
+│  │  • laps and resets    │  │  session_started, keepalive,    │    resets, players   │
+│  │  • track control via  │  │  lap_recorded, pilot_reset, …   │  • drives track      │
 │  │    reflection into    │  │  ◄────────────────── commands ──│    rotation          │
 │  │    Liftoff's UI flow  │  │  set_track, send_chat,          │  • admin dashboard   │
 │  └───────────────────────┘  │  kick_player, create_game, …    │                      │
@@ -50,8 +52,8 @@ speaking the [documented protocol](docs/server-protocol.md) can drive it.
 ```
 
 The plugin registers as a Photon callback target inside the game process, derives
-race telemetry from Photon events (lap detection from event `200` and player-state
-snapshots) and from a Harmony hook on `RaceCheckpoint.Trigger()`, and streams it
+race telemetry from Photon events (laps from event `200` and from each pilot's
+`GMS` player property, resets from `GMS` as the drone respawns), and streams it
 to the server as JSON events. The server sends JSON commands back; each command
 carries a `command_id` and is acknowledged with a `command_ack` event. The full
 message vocabulary is schema-defined in [`contracts/`](contracts/).
@@ -99,8 +101,9 @@ message vocabulary is schema-defined in [`contracts/`](contracts/).
 
 The lobby telemetry/logging path is the stable part. The host track-control and
 in-race-load path is reverse-engineered against Liftoff's own UI flow — after a
-game update, validate in-game that the bot's client enters the race scene and that
-`gate_passed` events resolve a non-null `actor` before relying on it. See
+game update, check in game that the bot's client enters the race scene and that a
+`set_track` still lands (its `command_ack` reads the new track back) before
+relying on it. See
 [docs/multiplayer-track-control.md](docs/multiplayer-track-control.md).
 
 ## History

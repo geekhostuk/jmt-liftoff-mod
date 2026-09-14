@@ -9,7 +9,7 @@
     "actor":        { "type": "integer", "description": "Photon actor number" },
     "nick":         { "type": "string" },
     "pilot_guid":   { "type": "string", "description": "Per-pilot GUID (may be empty)" },
-    "reason":       { "type": "string", "description": "Completion reason (e.g. race_state_finished, lap_cap_reached)" },
+    "reason":       { "type": "string", "description": "Completion reason (race_state_finished or lap_count_reached)" },
     "laps_logged":  { "type": "integer", "minimum": 0 },
     "lap_times_ms": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "Individual lap times in ms" },
     "total_ms":     { "type": "integer", "minimum": 0, "description": "Total time in milliseconds" },

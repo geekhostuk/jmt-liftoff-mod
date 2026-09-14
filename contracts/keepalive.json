@@ -10,6 +10,8 @@
     "actor":         { "type": "integer", "description": "Bot's local Photon actor number" },
     "race_id":       { "type": "string", "description": "Current race identifier" },
     "race_ordinal":  { "type": "integer", "minimum": 0, "description": "Race sequence number within session" },
+    "main_thread_last_tick_utc_ms": { "type": "integer", "minimum": 0, "description": "When Unity's main thread last ticked, as Unix time in milliseconds. 0 when it has not ticked yet, early in startup" },
+    "main_thread_gap_ms": { "type": "integer", "minimum": -1, "description": "Milliseconds since that tick, measured as the keepalive is sent. A large gap means the game is hung even though the socket is alive. -1 when there is no tick yet" },
     "current_env":   { "type": "string", "description": "Bot's actual current environment from Photon room properties" },
     "current_track": { "type": "string", "description": "Bot's actual current track from Photon room properties" },
     "current_race":  { "type": "string", "description": "Bot's actual current race from Photon room properties" },

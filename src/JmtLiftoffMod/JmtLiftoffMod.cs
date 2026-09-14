@@ -58,25 +58,21 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private static readonly string LapTimesSuffix = "_laptimes";
     private static readonly Regex GmsLapArrayRegex = new(@"Single\[\]\[(?<count>\d+)\]\s\[(?<vals>[^\]]+)\]", RegexOptions.Compiled);
     private static readonly Regex GmsLapValueRegex = new(@"float\s(?<v>-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
-    private static readonly Regex GmsCheckpointRegex = new(@"RacePlayerCheckpointInfo\s\{ID=string\s""(?<id>[^""]+)"",\sLap=int\s(?<lap>\d+),\sTime=float\s(?<time>-?\d+(?:\.\d+)?)\}", RegexOptions.Compiled);
     private readonly Dictionary<int, string> _actorToNick = new();
     private readonly Dictionary<int, string> _actorToUserId = new();
     private readonly Dictionary<int, int> _actorToRaceState = new();
     private readonly HashSet<int> _raceParticipants = new();
     private readonly Dictionary<int, PilotLapState> _actorLapState = new();
     private readonly Dictionary<string, PilotLapState> _guidLapState = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<int, string> _actorLastCheckpointId = new();
     private MultiplayerTrackControlService? _multiplayerTrackControl;
     private CompetitionClient? _competitionClient;
     private JmtLiftoffMod.Features.Chat.ChatCaptureService? _chatCapture;
-    private CheckpointHookService? _checkpointHook;
     private LobbyStatusService? _lobbyStatus;
     private BotStatsOverlay? _botStatsOverlay;
     // In-memory config for all the internal/diagnostic settings that should not appear in the
     // user-facing .cfg. Only the essential Competition connection settings are bound to the
     // real plugin Config.
     private ConfigFile _hiddenConfig = null!;
-    private ConfigEntry<bool> _enableCheckpointHook = null!;
     private ConfigEntry<bool> _emitLobbyStatusOnChange = null!;
     private ConfigEntry<bool> _showBotStatsOverlay = null!;
     private ConfigEntry<KeyboardShortcut> _statsOverlayHotkey = null!;
@@ -538,48 +534,6 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _lobbyStatus = new LobbyStatusService(Logger, AppendRaceEvent,
             getScreenState: () => _multiplayerTrackControl?.GetScreenState());
 
-        // ── Checkpoint/gate timing ────────────────────────────────────────
-        _enableCheckpointHook = _hiddenConfig.Bind(
-            "Racing", "EnableCheckpointHook", true,
-            "Enable Harmony patch on RaceCheckpoint.Trigger() for gate-by-gate timing. " +
-            "Disable if it causes issues with a new game version.");
-
-        if (_enableCheckpointHook.Value)
-        {
-            _checkpointHook = new CheckpointHookService(Logger, PluginGuid);
-            _checkpointHook.SetCallback(gateData =>
-            {
-                gateData.Nick = ResolveNick(gateData.Actor);
-                AppendRaceEvent("gate_passed", new Dictionary<string, object?>
-                {
-                    ["actor"] = gateData.Actor,
-                    ["nick"] = gateData.Nick,
-                    ["checkpoint_id"] = gateData.CheckpointId,
-                    ["trigger_id"] = gateData.TriggerId,
-                    ["gate_time_sec"] = gateData.GameTimeSec,
-                });
-
-                // Try to compute sector split
-                var split = _checkpointHook?.TryComputeSectorSplit(gateData.Actor, gateData.Nick);
-                if (split != null)
-                {
-                    AppendRaceEvent("sector_split", new Dictionary<string, object?>
-                    {
-                        ["actor"] = split.Actor,
-                        ["nick"] = split.Nick,
-                        ["sector_index"] = split.SectorIndex,
-                        ["from_gate"] = split.FromGate,
-                        ["to_gate"] = split.ToGate,
-                        ["sector_ms"] = split.SectorMs,
-                        ["gate_time_sec"] = split.GameTimeSec,
-                    });
-                }
-            });
-
-            if (!_checkpointHook.TryInstall())
-                _log.LogWarning("[Plugin] Checkpoint hook not installed — gate timing unavailable. GMS-only checkpoint data will still be captured.");
-        }
-
         // ── Bot stats overlay ─────────────────────────────────────────────
         _showBotStatsOverlay = _hiddenConfig.Bind(
             "Diagnostics", "ShowBotStatsOverlay", false,
@@ -794,8 +748,6 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     {
         _chatCapture?.Dispose();
         _chatCapture = null;
-        _checkpointHook?.Dispose();
-        _checkpointHook = null;
         _competitionClient?.Dispose();
         _competitionClient = null;
         _multiplayerTrackControl?.Dispose();
@@ -1593,24 +1545,6 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             TryEmitThrottledActivity(actor, "property_change", "GMS");
             var gmsText = Describe(gmsObj);
 
-            if (TryExtractCheckpointFromGmsText(gmsText, out var checkpointId, out var checkpointLap, out var checkpointTimeSec))
-            {
-                if (!_actorLastCheckpointId.TryGetValue(actor, out var prevCheckpointId) || !string.Equals(prevCheckpointId, checkpointId, StringComparison.Ordinal))
-                {
-                    _actorLastCheckpointId[actor] = checkpointId;
-                    AppendRaceLine(
-                        $"CHECKPOINT actor={actor} nick=\"{ResolveNick(actor)}\" checkpointId={checkpointId} lap={checkpointLap} timeSec={checkpointTimeSec:0.000}");
-                    AppendRaceEvent("checkpoint", new Dictionary<string, object?>
-                    {
-                        ["actor"] = actor,
-                        ["nick"] = ResolveNick(actor),
-                        ["checkpoint_id"] = checkpointId,
-                        ["lap_index"] = checkpointLap,
-                        ["elapsed_sec"] = Math.Round(checkpointTimeSec, 3)
-                    });
-                }
-            }
-
             if (TryExtractLapTimesFromGmsText(gmsText, out var lapTimesSec))
             {
                 MergeGmsLapSeries(actor, lapTimesSec);
@@ -1834,7 +1768,6 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         }
 
         _actorLapState.Remove(actor);
-        _actorLastCheckpointId.Remove(actor);
         _actorGmsRun.Remove(actor);
 
         var payload = new Dictionary<string, object?>
@@ -1886,12 +1819,10 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _guidLapState.Clear();
         _actorToRaceState.Clear();
         _raceParticipants.Clear();
-        _actorLastCheckpointId.Clear();
         _actorGmsRun.Clear();
         _actorSpawnUtc.Clear();
         _actorLastLapUtc.Clear();
         _needGmsBaseline = false;
-        CheckpointHookService.ResetGateTracking();
         _competitionClient?.SetRaceContext(_raceId, _raceOrdinal);
         AppendRaceLine($"RACE_RESET reason={reason}");
         AppendRaceEvent("race_reset", new Dictionary<string, object?>
@@ -1933,25 +1864,6 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         }
 
         return lapTimesSec.Count > 0;
-    }
-
-    private bool TryExtractCheckpointFromGmsText(string gmsText, out string checkpointId, out int lap, out float timeSec)
-    {
-        checkpointId = string.Empty;
-        lap = 0;
-        timeSec = 0f;
-
-        var match = GmsCheckpointRegex.Match(gmsText);
-        if (!match.Success)
-            return false;
-
-        if (!int.TryParse(match.Groups["lap"].Value, out lap))
-            return false;
-        if (!float.TryParse(match.Groups["time"].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out timeSec))
-            return false;
-
-        checkpointId = match.Groups["id"].Value;
-        return checkpointId.Length > 0;
     }
 
     private void EmitPilotComplete(PilotLapState state)

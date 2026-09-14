@@ -236,7 +236,7 @@ internal sealed class CompetitionClient : IDisposable
                     var raceId = _raceId;
                     var raceOrd = _raceOrdinal;
                     // Main-thread liveness enrichment. If Plugin hasn't wired the delegate
-                    // yet (early startup) emit 0/0 so the server can tell "no data".
+                    // yet (early startup) emit 0 and -1 so the server can tell "no data".
                     long mainThreadLastTick = _getMainThreadLastTickUtcMs?.Invoke() ?? 0;
                     long mainThreadGapMs = mainThreadLastTick > 0
                         ? Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - mainThreadLastTick)

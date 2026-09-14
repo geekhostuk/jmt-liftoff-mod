@@ -669,8 +669,8 @@ internal sealed class MultiplayerTrackChangeExecutor : ITrackControlAdapter
     {
         // In-game controllers — expose the multiplayer game-settings popup while the
         // host is loaded INTO a race (in-game menu / race score panel). Restored for
-        // JmtLiftoffMod: this bot sits in-race to capture gate timing, so it must
-        // be able to change tracks from the in-game screen without returning to the
+        // JmtLiftoffMod: this bot sits in the race scene as host, so it must be
+        // able to change tracks from the in-game screen without returning to the
         // lobby waiting room. Tried first; the lobby path below remains as a fallback
         // for when the bot is back in the waiting room.
         foreach (var mapping in new[]

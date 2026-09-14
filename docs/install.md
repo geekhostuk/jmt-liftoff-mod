@@ -106,7 +106,7 @@ plugin name, update it to expect `JMT Liftoff Mod`.
 | `No API key set — paste your bot's API key…` | `ApiKey` is empty. |
 | `Disconnected: … Reconnecting in 5s...` looping | Server unreachable, wrong `ServerUrl`, or the server rejected the key. Check the server's logs. |
 | Connected but no telemetry | The bot must be in a multiplayer room; most events only fire on Photon traffic. |
-| No `gate_passed` events | The bot's own client has to be **loaded into the race scene**, not sitting in the waiting room. |
+| No gate or sector times | The mod doesn't time gates. Gate timing lives in the separate [JMT Liftoff Leaderboard](https://github.com/geekhostuk/jmt-liftoff-leaderboard) plugin. |
 | Commands acked `skipped_stale` | The game's main thread hung for >30 s (e.g. loading); the server should re-issue. |
 
 Plugin logs live in the BepInEx console and under

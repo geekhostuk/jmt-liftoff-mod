@@ -39,7 +39,7 @@ Header   : Authorization: Bearer <ApiKey>
    The version/build marker are compiled constants — the server always knows
    which build is connected.
 
-2. **Events** stream from plugin → server as things happen in-game (laps, gates,
+2. **Events** stream from plugin → server as things happen in-game (laps, resets,
    players, chat, track changes). Events are queued in an outbox (bounded at
    10,000; overflow is dropped and counted) and flushed in order whenever the
    socket is up.

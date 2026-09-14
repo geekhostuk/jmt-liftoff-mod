@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
+## [Unreleased]
+
+To be released as 1.3.2. Laps, resets, chat and track control are unchanged.
+
+### Removed
+
+- **The gate timing, which never worked.** The Harmony hook on
+  `RaceCheckpoint.Trigger()` could not tell which drone passed a gate, and the
+  checkpoint the plugin looked for in a pilot's `GMS` property is not there in JMT
+  rooms. So `gate_passed`, `sector_split` and `checkpoint` were never sent, and
+  they are gone, with their schemas. Gate timing lives in the separate
+  [JMT Liftoff Leaderboard](https://github.com/geekhostuk/jmt-liftoff-leaderboard)
+  plugin.
+- Unused code: a second JSON serialiser, a log writer and object describer that
+  the plugin's own copies had replaced, and a Photon log-noise silencer that was
+  never switched on.
+
+### Fixed
+
+- The docs and contracts say what the plugin sends. `lap_recorded`'s `source` is
+  `gms` or `event200`. `keepalive` lists `main_thread_last_tick_utc_ms` and
+  `main_thread_gap_ms`. `pilot_complete`'s `reason` is `race_state_finished` or
+  `lap_count_reached`. `pilot_active`, `pilot_reset` and `pilot_complete` are
+  listed as plugin events, not server-side ones.
+
 ## [1.3.1] — 2026-09-12
 
 ### Fixed

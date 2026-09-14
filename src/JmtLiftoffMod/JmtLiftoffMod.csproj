@@ -8,7 +8,7 @@
     <AssemblyName>JmtLiftoffMod</AssemblyName>
     <RootNamespace>JmtLiftoffMod</RootNamespace>
     <AssemblyTitle>JMT Liftoff Mod</AssemblyTitle>
-    <Description>BepInEx plugin that turns a copy of Liftoff into a server-driven multiplayer race host with gate-by-gate timing.</Description>
+    <Description>BepInEx plugin that turns a copy of Liftoff into a server-driven multiplayer race host.</Description>
   </PropertyGroup>
 
   <!-- Generate BuildInfo from the version in Directory.Build.props, so the version

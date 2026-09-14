@@ -10,7 +10,7 @@
     "nick":           { "type": "string" },
     "pilot_guid":     { "type": "string" },
     "steam_id":       { "type": ["string", "null"] },
-    "source":         { "type": "string", "description": "How the lap was detected (e.g. event200, gms_merge)" },
+    "source":         { "type": "string", "enum": ["gms", "event200"], "description": "How the lap was detected: gms from the pilot's GMS player property, event200 from Photon event 200. Both usually report the same crossing, and the plugin drops the second report" },
     "lap_number":     { "type": "integer", "minimum": 1 },
     "lap_ms":         { "type": "integer", "minimum": 0, "description": "Lap time in milliseconds" },
     "lap_sec":        { "type": "number", "description": "Lap time in seconds (derived)" },
