@@ -7,7 +7,7 @@
   "properties": {
     "event_type": { "const": "command_ack" },
     "command_id": { "type": "string", "description": "ID of the acknowledged command" },
-    "status":     { "type": "string", "description": "Outcome (e.g. ok, error)" },
+    "status":     { "type": "string", "description": "Outcome: ok, error, skipped_stale, or not_host (since 1.4.0: the game is a guest in a room someone else hosts, so next_track, set_track, send_chat, kick_player, or update_playlist with apply_immediately was not run and nothing changed)" },
     "message":    { "type": "string", "description": "Human-readable detail (empty on success)" },
     "timing_total_ms": { "type": "integer", "description": "Total plugin-side processing time in ms (optional)" },
     "timing_queue_ms": { "type": "integer", "description": "Time waiting in Unity main-thread queue in ms (optional)" },

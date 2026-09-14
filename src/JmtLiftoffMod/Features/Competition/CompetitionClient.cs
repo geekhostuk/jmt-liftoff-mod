@@ -41,6 +41,8 @@ internal sealed class CompetitionClient : IDisposable
     private readonly Action? _onTrackChanging;
     private readonly Action? _onConnected;
     private readonly Action? _onLobbyStatusRequested;
+    // True while this game is a guest in someone else's room: only the host's copy acts.
+    private readonly Func<bool>? _isRoomGuest;
 
     private CancellationTokenSource? _cts;
     private Task? _workerTask;
@@ -68,7 +70,8 @@ internal sealed class CompetitionClient : IDisposable
         Action? onTrackChanging = null,
         Action? onConnected = null,
         Action? onLobbyStatusRequested = null,
-        Func<long>? getMainThreadLastTickUtcMs = null)
+        Func<long>? getMainThreadLastTickUtcMs = null,
+        Func<bool>? isRoomGuest = null)
     {
         _config = config;
         _log = log;
@@ -82,6 +85,7 @@ internal sealed class CompetitionClient : IDisposable
         _onTrackChanging = onTrackChanging;
         _onConnected = onConnected;
         _onLobbyStatusRequested = onLobbyStatusRequested;
+        _isRoomGuest = isRoomGuest;
     }
 
     /// <summary>
@@ -124,6 +128,17 @@ internal sealed class CompetitionClient : IDisposable
             _lastRoomTrackCacheUtc = now;
             ReadAndCacheRoomTrackJson();
         }
+    }
+
+    /// <summary>
+    /// Reads the room now rather than at the next five-second refresh. Called as this game
+    /// becomes or stops being the room's host, so the next keepalive can't say otherwise.
+    /// Main thread only.
+    /// </summary>
+    public void RefreshRoomState()
+    {
+        _lastRoomTrackCacheUtc = DateTime.UtcNow;
+        ReadAndCacheRoomTrackJson();
     }
 
     /// <summary>Forward a JSONL event line to the server. Safe to call from any thread.</summary>
@@ -404,6 +419,21 @@ internal sealed class CompetitionClient : IDisposable
         EnqueueEvent(ack);
     }
 
+    /// <summary>
+    /// Whether this game is a guest in someone else's room. If so the command is acked
+    /// <c>not_host</c> and nothing else happens -- no grace window, no race, no change -- since
+    /// only the host's copy changes tracks, chats or kicks. Checked on the main thread, before
+    /// anything the command would do.
+    /// </summary>
+    private bool RefuseAsGuest(string cmd, string? commandId)
+    {
+        if (_isRoomGuest?.Invoke() != true)
+            return false;
+        _log.LogInfo($"[Competition] {cmd} refused: this game is a guest in the room, and only the host's copy acts.");
+        EmitCommandAck(commandId, "not_host", "this game is not the room's host");
+        return true;
+    }
+
     // ── Command dispatch ───────────────────────────────────────────────────
 
     private void DispatchCommand(string json)
@@ -424,6 +454,7 @@ internal sealed class CompetitionClient : IDisposable
                 _log.LogInfo("[Competition] next_track received — scheduling on main thread.");
                 ScheduleStaleable("next_track", commandId, () =>
                 {
+                    if (RefuseAsGuest("next_track", commandId)) return;
                     try
                     {
                         _onTrackChanging?.Invoke();
@@ -445,6 +476,7 @@ internal sealed class CompetitionClient : IDisposable
                 {
                     setTrackTiming.MarkMainThreadPickup();
                     _log.LogInfo($"[timing] set_track main-thread pickup command_id={commandId} queueDelay={setTrackTiming.QueueDelayMs}ms");
+                    if (RefuseAsGuest("set_track", commandId)) return;
                     try
                     {
                         _onTrackChanging?.Invoke();
@@ -474,6 +506,8 @@ internal sealed class CompetitionClient : IDisposable
                     var seq = sequence!;
                     ScheduleStaleable("update_playlist", commandId, () =>
                     {
+                        // Only jumping to the playlist changes the room; replacing it is harmless.
+                        if (applyImmediately && RefuseAsGuest("update_playlist", commandId)) return;
                         try { _trackControl.ExternalUpdatePlaylist(seq, applyImmediately, "competition-server"); EmitCommandAck(commandId, "ok"); }
                         catch (Exception ex) { _log.LogWarning($"[Competition] update_playlist failed: {ex.GetType().Name}: {ex.Message}"); EmitCommandAck(commandId, "error", ex.Message); }
                     });
@@ -525,6 +559,7 @@ internal sealed class CompetitionClient : IDisposable
                     ScheduleStaleable("send_chat", commandId, () =>
                     {
                         chatTiming.MarkMainThreadPickup();
+                        if (RefuseAsGuest("send_chat", commandId)) return;
                         chatTiming.StartPhase("send");
                         try { _trackControl.ExternalSendChat(msg, "competition-server"); chatTiming.EndCurrentPhase(); EmitCommandAck(commandId, "ok", "", chatTiming); }
                         catch (Exception ex) { chatTiming.EndCurrentPhase(); _log.LogWarning($"[Competition] send_chat failed: {ex.GetType().Name}: {ex.Message}"); EmitCommandAck(commandId, "error", ex.Message, chatTiming); }
@@ -539,6 +574,7 @@ internal sealed class CompetitionClient : IDisposable
                     var a = actorNum;
                     RunOnMainThread(() =>
                     {
+                        if (RefuseAsGuest("kick_player", commandId)) return;
                         try { _onKickPlayer?.Invoke(a); EmitCommandAck(commandId, "ok"); }
                         catch (Exception ex) { _log.LogWarning($"[Competition] kick_player failed: {ex.GetType().Name}: {ex.Message}"); EmitCommandAck(commandId, "error", ex.Message); }
                     });

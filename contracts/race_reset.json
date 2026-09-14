@@ -6,8 +6,9 @@
   "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
   "properties": {
     "event_type":       { "const": "race_reset" },
-    "reason":           { "type": "string", "description": "Why the race started. track_change: a set_track or next_track, sent as the command arrives, before the new track loads, so the room still names the old track. room_track_change: the track was changed in game, sent right after the track_changed that reports it. room_sgso_start: the room's shared game state restarted. actor_<n>_rs_reset: a pilot's race state was reset." },
-    "previous_race_id": { "type": "string" }
+    "reason":           { "type": "string", "description": "Why the race started. track_change: a set_track or next_track, sent as the command arrives, before the new track loads, so the room still names the old track. room_track_change: the track was changed in game, sent right after the track_changed that reports it. room_sgso_start: the room's shared game state restarted. actor_<n>_rs_reset: a pilot's race state was reset. host_takeover (since 1.4.0): the room's host left and this game became the host; every pilot's run carries on, so laps flown before it are not reported again and lap numbers start again at 1." },
+    "previous_race_id": { "type": "string" },
+    "is_host":          { "type": "boolean", "description": "Since 1.4.0. Always true when sent: a copy of the plugin in a room its game doesn't host writes this to its own race log with false and doesn't send it" }
   },
   "required": ["reason", "previous_race_id"]
 }

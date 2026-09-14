@@ -120,6 +120,42 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     // the heuristic is no longer needed and would cause series mismatches.
     private bool _needGmsBaseline = true;
 
+    // ── Host only ──
+    // Only the copy of the plugin in the room host's game acts for the room: it times it and
+    // runs track, chat and kick commands. Two copies in one room would report every lap twice.
+    // A guest's copy keeps following laps, so it can take over the moment the host leaves
+    // (TakeOverAsHost), but sends none of it. Where this game stood when last looked:
+    private (bool InRoom, bool Host)? _roomRole;
+    private static readonly HashSet<string> HostOnlyEvents = new(StringComparer.Ordinal)
+    {
+        "lap_recorded", "pilot_reset", "pilot_complete", "race_end", "race_reset", "lap_splits",
+    };
+
+    // ── Gate splits from the room ──
+    // Each pilot's JMT Liftoff Leaderboard plugin publishes its lap's gate times on its player
+    // (RoomSplitCodec). The host pairs them with the lap it recorded for that pilot and sends
+    // lap_splits. The last few laps of each pilot, for the pairing:
+    private readonly Dictionary<int, List<LapRef>> _actorLapRefs = new();
+    private const int KeptLapRefs = 10;
+    // The plugin's time for a lap and the room's differ by a rounding error.
+    private const int SplitMatchMs = 2;
+    private static readonly TimeSpan SplitLapWindow = TimeSpan.FromSeconds(60);
+    // The host's own plugin can publish a moment before the host's own GMS records the lap,
+    // so a split with no lap yet waits this long for it.
+    private static readonly TimeSpan SplitHoldWindow = TimeSpan.FromSeconds(5);
+    private readonly List<(int Actor, RoomSplit Split, DateTime At)> _pendingSplits = new();
+    // The last JMTS sequence number read from each pilot, so a repeat is never sent twice.
+    private readonly Dictionary<int, int> _actorSplitSeq = new();
+
+    private sealed class LapRef
+    {
+        public int LapNumber;
+        public int LapMs;
+        public long EventOrdinal;
+        public DateTime At;
+        public bool SplitSent;
+    }
+
     // Background log writer — drains queued file writes off the main thread
     private readonly BlockingCollection<(string path, string text)> _logQueue = new(1000);
     private System.Threading.Thread? _logWriterThread;
@@ -482,7 +518,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                 );
                 EmitPlayerList();
             },
-            getMainThreadLastTickUtcMs: () => GetMainThreadLastTickUtcMs());
+            getMainThreadLastTickUtcMs: () => GetMainThreadLastTickUtcMs(),
+            isRoomGuest: IsRoomGuest);
         _competitionClient.Start();
 
         _chatCapture = new ChatCaptureService(Logger, PluginGuid, (userId, userName, message) =>
@@ -683,6 +720,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _competitionClient?.Update();
         _botStatsOverlay?.Update();
         WatchRoomTrack();
+        NoteHostState();
+        ExpirePendingSplits();
 
         // After a Photon disconnect+reconnect, send a fresh player list so the
         // server drops stale players from the old lobby.
@@ -1074,6 +1113,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _actorToNick[newPlayer.ActorNumber] = newPlayer.NickName;
         if (!string.IsNullOrEmpty(newPlayer.UserId))
             _actorToUserId[newPlayer.ActorNumber] = newPlayer.UserId;
+        BaselineSplitSeq(newPlayer);
         AppendStateLine($"Player entered room: Actor={newPlayer.ActorNumber} Nick=\"{newPlayer.NickName}\" UserId=\"{newPlayer.UserId}\"");
         AppendRaceEvent("player_entered", new Dictionary<string, object?>
         {
@@ -1097,6 +1137,9 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _actorSpawnUtc.Remove(otherPlayer.ActorNumber);
         _actorLastLapUtc.Remove(otherPlayer.ActorNumber);
         _actorRecentLaps.Remove(otherPlayer.ActorNumber);
+        _actorLapRefs.Remove(otherPlayer.ActorNumber);
+        _actorSplitSeq.Remove(otherPlayer.ActorNumber);
+        _pendingSplits.RemoveAll(p => p.Actor == otherPlayer.ActorNumber);
         AppendStateLine($"Player left room: Actor={otherPlayer.ActorNumber} Nick=\"{otherPlayer.NickName}\"");
         AppendRaceEvent("player_left", new Dictionary<string, object?>
         {
@@ -1126,6 +1169,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _multiplayerTrackControl?.NotifyActivity(nameof(OnPlayerPropertiesUpdate));
         _actorToNick[targetPlayer.ActorNumber] = targetPlayer.NickName;
         UpdateRaceStateFromProperties(targetPlayer.ActorNumber, changedProps);
+        OnRoomSplits(targetPlayer, changedProps);
         AppendStateLine(
             () => $"Player properties updated: Actor={targetPlayer.ActorNumber} Nick=\"{targetPlayer.NickName}\" {Describe(changedProps)}");
         _multiplayerTrackControl?.OnPlayerPropertiesUpdate(targetPlayer, changedProps);
@@ -1136,7 +1180,94 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _multiplayerTrackControl?.NotifyActivity(nameof(OnMasterClientSwitched));
         AppendStateLine($"Master client switched: Actor={newMasterClient.ActorNumber} Nick=\"{newMasterClient.NickName}\"");
         _multiplayerTrackControl?.OnMasterClientSwitched(newMasterClient);
-        if (_emitLobbyStatusOnChange?.Value == true) _lobbyStatus?.EmitLobbyStatus();
+        // Becoming the host takes over the room's timing; see NoteHostState.
+        if (!NoteHostState() && _emitLobbyStatusOnChange?.Value == true) _lobbyStatus?.EmitLobbyStatus();
+    }
+
+    // ── Host only ────────────────────────────────────────────────────────────
+
+    /// <summary>This game is the room's host: the Photon master client.</summary>
+    private static bool IsRoomHost() => PhotonNetwork.InRoom && PhotonNetwork.IsMasterClient;
+
+    /// <summary>
+    /// This game is in a room someone else hosts. Its copy of the plugin then keeps quiet: no
+    /// timing, and no track, chat or kick commands. Outside a room nothing is anyone else's to
+    /// do, so everything there behaves as it always has.
+    /// </summary>
+    private static bool IsRoomGuest() => PhotonNetwork.InRoom && !PhotonNetwork.IsMasterClient;
+
+    /// <summary>
+    /// Notices, once, this game joining or leaving a room, or becoming or ceasing to be its
+    /// host. The keepalive's cached room state is refreshed so the next keepalive can't
+    /// contradict the change, and a lobby_status tells the server. A guest becoming the host
+    /// takes over the room's timing. Runs every frame, so it holds whichever way the change
+    /// arrives. Returns whether anything changed.
+    /// </summary>
+    private bool NoteHostState()
+    {
+        var now = (InRoom: PhotonNetwork.InRoom, Host: IsRoomHost());
+        if (_roomRole == now)
+            return false;
+        var was = _roomRole;
+        _roomRole = now;
+        if (was == null && !now.InRoom)
+            return false; // starting up on the menu: nothing to tell
+
+        _competitionClient?.RefreshRoomState();
+        _log.LogInfo(!now.InRoom
+            ? "[Host] Not in a room."
+            : now.Host
+                ? "[Host] This game is the room's host: its copy times the room and runs commands."
+                : "[Host] This game is a guest in the room: its copy follows the laps but sends no timing and runs no track, chat or kick command.");
+        _lobbyStatus?.EmitLobbyStatus();
+        if (was == (true, false) && now == (true, true))
+            TakeOverAsHost();
+        return true;
+    }
+
+    /// <summary>
+    /// The host left and the room made this game its host. The laps flown so far were the old
+    /// host's to report, so a race starts from here with every pilot's run carried on: only
+    /// laps flown from now on are recorded, and none of those is reported twice.
+    /// </summary>
+    private void TakeOverAsHost()
+    {
+        _log.LogInfo("[Host] The room's host left and this game is the host now: taking over the timing.");
+        ReadRoomPlayers();
+        StartNewRace("host_takeover", keepRuns: true);
+        EmitPlayerList();
+        try { DisableLiftoffInactivityKick(); } catch { /* best effort */ }
+    }
+
+    /// <summary>
+    /// Everyone in the room, as the room has them. A guest follows the room through callbacks,
+    /// but none is made for what was already there when it joined: players' names and game
+    /// ids, how far into their runs they are, and the last gate splits they published.
+    /// </summary>
+    private void ReadRoomPlayers()
+    {
+        var players = PhotonNetwork.PlayerList;
+        if (players == null)
+            return;
+        foreach (var player in players)
+        {
+            var actor = player.ActorNumber;
+            _actorToNick[actor] = player.NickName;
+            if (!string.IsNullOrEmpty(player.UserId))
+                _actorToUserId[actor] = player.UserId;
+            BaselineSplitSeq(player);
+
+            // A run this copy never saw grow: everything in it is the old host's.
+            if (_actorGmsRun.ContainsKey(actor))
+                continue;
+            if (player.CustomProperties != null
+                && player.CustomProperties.TryGetValue("GMS", out var gms) && gms != null
+                && TryExtractLapTimesFromGmsText(Describe(gms), out var lapTimesSec))
+            {
+                _actorGmsRun[actor] = lapTimesSec.Select(v => (int)Math.Round(v * 1000d)).ToList();
+                _log.LogInfo($"[Host] GMS baseline set for actor {actor}: {lapTimesSec.Count} lap(s) the previous host reported");
+            }
+        }
     }
 
     // ── IConnectionCallbacks ─────────────────────────────────────────────────
@@ -1719,13 +1850,12 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
         AppendRaceLine(
             $"LAP actor={actor} nick=\"{state.Nick}\" guid={state.Guid} source={source} lap={lapNumber} ms={lapMs} sec={ToSeconds(lapMs)} deltaPrevMs={FormatNullable(deltaPrev)} deltaBestMs={FormatNullable(deltaBest)}");
-        _actorToUserId.TryGetValue(actor, out var steamId);
         AppendRaceEvent("lap_recorded", new Dictionary<string, object?>
         {
             ["actor"] = actor,
             ["nick"] = state.Nick,
             ["pilot_guid"] = state.Guid,
-            ["steam_id"] = string.IsNullOrEmpty(steamId) ? (object?)null : steamId,
+            ["steam_id"] = UserIdOf(actor),
             ["source"] = source,
             ["lap_number"] = lapNumber,
             ["lap_ms"] = lapMs,
@@ -1733,6 +1863,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             ["delta_prev_ms"] = deltaPrev,
             ["delta_best_ms"] = deltaBest
         });
+        RememberLap(actor, lapNumber, lapMs, _raceEventOrdinal);
 
         var maxLaps = _maxLapsPerRace.Value;
         if (maxLaps > 0 && !state.IsComplete && lapNumber >= maxLaps)
@@ -1743,6 +1874,151 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         }
 
         TryEmitRaceEnd();
+    }
+
+    /// <summary>
+    /// The pilot's game id. A pilot who was in the room before this copy joined never entered
+    /// it as far as this copy knows, so the room's own player is asked when the map has no id.
+    /// </summary>
+    private string? UserIdOf(int actor)
+    {
+        if (_actorToUserId.TryGetValue(actor, out var known) && !string.IsNullOrEmpty(known))
+            return known;
+        var userId = PhotonNetwork.CurrentRoom?.GetPlayer(actor)?.UserId;
+        if (string.IsNullOrEmpty(userId))
+            return null;
+        _actorToUserId[actor] = userId!;
+        return userId;
+    }
+
+    // ── Gate splits from the room ────────────────────────────────────────────
+
+    /// <summary>
+    /// A pilot's plugin published a lap's gate times (see RoomSplitCodec). The host pairs them
+    /// with the lap it recorded for that pilot and sends lap_splits. A guest only notes the
+    /// sequence number, so that after taking over it never sends what the old host sent.
+    /// </summary>
+    private void OnRoomSplits(Player player, PhotonHashtable changedProps)
+    {
+        try
+        {
+            if (!changedProps.TryGetValue(RoomSplitCodec.SplitsKey, out var splits) || splits == null)
+                return;
+            var actor = player.ActorNumber;
+            if (!RoomSplitCodec.TryReadSeq(splits, out var seq))
+                return;
+            if (_actorSplitSeq.TryGetValue(actor, out var lastSeq) && lastSeq == seq)
+                return;
+            _actorSplitSeq[actor] = seq;
+            if (!IsRoomHost())
+                return;
+
+            // The gates are published only when they change, so an update without them means
+            // the ones the player holds are still the lap's; the hash says whether they are.
+            if (!changedProps.TryGetValue(RoomSplitCodec.GatesKey, out var gates) || gates == null)
+                player.CustomProperties?.TryGetValue(RoomSplitCodec.GatesKey, out gates);
+            if (!RoomSplitCodec.TryDecode(splits, gates, out var split, out var why) || split == null)
+            {
+                _log.LogInfo($"[Splits] Ignored gate splits from actor {actor} ({ResolveNick(actor)}): {why}");
+                return;
+            }
+            if (!TrySendSplits(actor, split))
+                _pendingSplits.Add((actor, split, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[Splits] Reading gate splits failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>A lap just recorded, for the pilot's gate splits to find; and any already waiting for it.</summary>
+    private void RememberLap(int actor, int lapNumber, int lapMs, long eventOrdinal)
+    {
+        if (!_actorLapRefs.TryGetValue(actor, out var refs))
+            _actorLapRefs[actor] = refs = new List<LapRef>();
+        refs.Add(new LapRef { LapNumber = lapNumber, LapMs = lapMs, EventOrdinal = eventOrdinal, At = DateTime.UtcNow });
+        if (refs.Count > KeptLapRefs)
+            refs.RemoveAt(0);
+
+        for (var i = 0; i < _pendingSplits.Count; i++)
+        {
+            if (_pendingSplits[i].Actor != actor || !TrySendSplits(actor, _pendingSplits[i].Split))
+                continue;
+            _pendingSplits.RemoveAt(i);
+            break;
+        }
+    }
+
+    /// <summary>
+    /// Sends the split with the pilot's newest lap it fits: not paired yet, within
+    /// SplitMatchMs of the plugin's time and no older than SplitLapWindow.
+    /// </summary>
+    private bool TrySendSplits(int actor, RoomSplit split)
+    {
+        if (!_actorLapRefs.TryGetValue(actor, out var refs))
+            return false;
+        var now = DateTime.UtcNow;
+        for (var i = refs.Count - 1; i >= 0; i--)
+        {
+            var lap = refs[i];
+            if (lap.SplitSent || now - lap.At > SplitLapWindow || Math.Abs(lap.LapMs - split.LapMs) > SplitMatchMs)
+                continue;
+            lap.SplitSent = true;
+            EmitLapSplits(actor, lap, split);
+            return true;
+        }
+        return false;
+    }
+
+    private void ExpirePendingSplits()
+    {
+        if (_pendingSplits.Count == 0)
+            return;
+        var now = DateTime.UtcNow;
+        for (var i = _pendingSplits.Count - 1; i >= 0; i--)
+        {
+            var (actor, split, at) = _pendingSplits[i];
+            if (now - at <= SplitHoldWindow)
+                continue;
+            _pendingSplits.RemoveAt(i);
+            _log.LogInfo($"[Splits] No lap of {split.LapMs} ms from actor {actor} ({ResolveNick(actor)}) to go with its gate splits: dropped");
+        }
+    }
+
+    private void EmitLapSplits(int actor, LapRef lap, RoomSplit split)
+    {
+        AppendRaceLine(
+            $"SPLITS actor={actor} nick=\"{ResolveNick(actor)}\" lap={lap.LapNumber} ms={lap.LapMs} splitMs={split.LapMs} gates={split.Gates.Length} seq={split.Seq}");
+        AppendRaceEvent("lap_splits", new Dictionary<string, object?>
+        {
+            ["actor"] = actor,
+            ["nick"] = ResolveNick(actor),
+            ["steam_id"] = UserIdOf(actor),
+            ["lap_number"] = lap.LapNumber,
+            ["lap_event_ordinal"] = lap.EventOrdinal,
+            ["lap_ms"] = lap.LapMs,
+            ["split_lap_ms"] = split.LapMs,
+            ["prev_lap_ms"] = split.PrevLapMs,
+            ["gates"] = split.Gates,
+            ["times"] = split.Times,
+            ["seq"] = split.Seq,
+            ["format"] = split.Format,
+        });
+    }
+
+    /// <summary>
+    /// Remembers the gate splits a player already carries, so only laps flown from here are
+    /// sent. A player's properties go with them from room to room, and none of them is called
+    /// back to a room they join.
+    /// </summary>
+    private void BaselineSplitSeq(Player player)
+    {
+        if (_actorSplitSeq.ContainsKey(player.ActorNumber))
+            return;
+        if (player.CustomProperties != null
+            && player.CustomProperties.TryGetValue(RoomSplitCodec.SplitsKey, out var splits)
+            && RoomSplitCodec.TryReadSeq(splits, out var seq))
+            _actorSplitSeq[player.ActorNumber] = seq;
     }
 
     private static bool IsPrefix(IReadOnlyList<int> source, IReadOnlyList<int> candidatePrefix)
@@ -1808,7 +2084,12 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         ["chat_capture_mode"] = ChatCaptureService.Mode.ToString(),
     };
 
-    private void StartNewRace(string reason)
+    /// <param name="keepRuns">
+    /// A host taking over (TakeOverAsHost): the pilots are mid-run on the same track, and the
+    /// laps their GMS already holds were the old host's to report. Their runs, spawns and race
+    /// states carry on, so only laps flown from here are recorded; lap numbers start again.
+    /// </param>
+    private void StartNewRace(string reason, bool keepRuns = false)
     {
         var previousRaceId = _raceId;
         _raceId = CreateRaceId();
@@ -1817,11 +2098,17 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _raceEndEmitted = false;
         _actorLapState.Clear();
         _guidLapState.Clear();
-        _actorToRaceState.Clear();
         _raceParticipants.Clear();
-        _actorGmsRun.Clear();
-        _actorSpawnUtc.Clear();
-        _actorLastLapUtc.Clear();
+        // A lap's splits belong to its race: any still to come for the last one are dropped.
+        _actorLapRefs.Clear();
+        _pendingSplits.Clear();
+        if (!keepRuns)
+        {
+            _actorToRaceState.Clear();
+            _actorGmsRun.Clear();
+            _actorSpawnUtc.Clear();
+            _actorLastLapUtc.Clear();
+        }
         _needGmsBaseline = false;
         _competitionClient?.SetRaceContext(_raceId, _raceOrdinal);
         AppendRaceLine($"RACE_RESET reason={reason}");
@@ -1945,6 +2232,15 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
     private void AppendRaceEvent(string eventType, Dictionary<string, object?> payload)
     {
+        // A guest's timing goes in its own race log and nowhere else: the host's copy sends
+        // the room's. Everything else -- chat, players, lobby status -- is sent either way.
+        var send = true;
+        if (HostOnlyEvents.Contains(eventType))
+        {
+            send = !IsRoomGuest();
+            payload["is_host"] = send;
+        }
+
         payload["event_type"] = eventType;
         payload["timestamp_utc"] = DateTime.UtcNow.ToString("O");
         payload["session_id"] = _sessionId;
@@ -1955,7 +2251,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         var json = SerializeJsonObject(payload);
         if (_cfgEnableRaceJsonl?.Value ?? true)
             _logQueue.TryAdd((_raceJsonFilePath, json));
-        _competitionClient?.EnqueueEvent(json);
+        if (send)
+            _competitionClient?.EnqueueEvent(json);
     }
 
     private string CreateRaceId()

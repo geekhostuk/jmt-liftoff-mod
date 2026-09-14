@@ -4,9 +4,35 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
-## [Unreleased]
+## [1.4.0] — Unreleased
 
-To be released as 1.3.2. Laps, resets, chat and track control are unchanged.
+Only the copy of the plugin in the room host's game acts for the room, and it sends
+each pilot's gate splits along with their laps. Includes the clean-up that was to be
+1.3.2.
+
+### Added
+
+- **Only the host's copy acts.** Two copies of the plugin in one room, one in the
+  host's game and one in a guest's, reported every lap twice. Now a copy in a room
+  someone else hosts sends no timing: `lap_recorded`, `pilot_reset`,
+  `pilot_complete`, `race_end`, `race_reset` and `lap_splits` go to its own race
+  log and not to the server. It refuses `next_track`, `set_track`, `send_chat`,
+  `kick_player`, and `update_playlist` with `apply_immediately`, acking the new
+  status `not_host` and doing nothing else. Those timing events carry `is_host`.
+  Outside a room everything works as before.
+- **A guest takes over when the host leaves.** A guest's copy keeps following every
+  pilot's laps. When the room makes its game the host, it sends `lobby_status`,
+  starts a race with the new `race_reset` reason `host_takeover`, and sends a fresh
+  `player_list`. Every pilot's run carries on, so the laps the old host reported are
+  not sent again.
+- `lobby_status` is sent whenever the game joins or leaves a room, or becomes or
+  stops being its host, and the keepalive's `is_host` follows at once.
+- **Gate splits from the room: `lap_splits`.** The JMT Liftoff Leaderboard plugin
+  publishes each lap's gate times on its pilot's Photon player (`JMTG` and `JMTS`).
+  The host's copy reads everyone's, refuses any that isn't a lap, pairs each with the
+  lap it recorded for that pilot (within 2 ms, and 60 s at most), and sends
+  `lap_splits`, naming the lap by `lap_number` and `lap_event_ordinal`. See
+  [Gate splits from the room](docs/server-protocol.md#gate-splits-from-the-room).
 
 ### Removed
 
@@ -23,6 +49,8 @@ To be released as 1.3.2. Laps, resets, chat and track control are unchanged.
 
 ### Fixed
 
+- `lap_recorded`'s `steam_id` is filled in for a pilot who was in the room before
+  the plugin joined it: when the plugin never saw them enter, it asks the room.
 - The docs and contracts say what the plugin sends. `lap_recorded`'s `source` is
   `gms` or `event200`. `keepalive` lists `main_thread_last_tick_utc_ms` and
   `main_thread_gap_ms`. `pilot_complete`'s `reason` is `race_state_finished` or

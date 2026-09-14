@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lap_splits.json",
+  "title": "lap_splits",
+  "description": "Emitted by the room host's copy of the plugin when a pilot's JMT Liftoff Leaderboard plugin publishes a lap's gate times in the room (player properties JMTG and JMTS; see docs/server-protocol.md). They are checked and paired with the lap the plugin recorded for that pilot: the newest not yet paired, within 2 ms of the plugin's time and at most 60 s old. Sent after that lap's lap_recorded, in the same race.",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type":        { "const": "lap_splits" },
+    "actor":             { "type": "integer", "description": "Photon actor number" },
+    "nick":              { "type": "string" },
+    "steam_id":          { "type": ["string", "null"], "description": "The pilot's Photon UserId, as on lap_recorded" },
+    "lap_number":        { "type": "integer", "minimum": 1, "description": "The lap_number of the lap these times are for" },
+    "lap_event_ordinal": { "type": "integer", "minimum": 1, "description": "The event_ordinal of that lap's lap_recorded, in this race" },
+    "lap_ms":            { "type": "integer", "minimum": 0, "description": "The lap's time as lap_recorded has it" },
+    "split_lap_ms":      { "type": "integer", "minimum": 1, "description": "The lap's time as the pilot's plugin measured it: what the gate times add up to. Within 2 ms of lap_ms" },
+    "prev_lap_ms":       { "type": ["integer", "null"], "description": "The lap before it in the pilot's run, as the plugin measured it; null when there was none" },
+    "gates":             { "type": "array", "minItems": 1, "maxItems": 200, "items": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$" }, "description": "The checkpoints' ids (GUIDs from the course's .race file), in the order the lap passed them" },
+    "times":             { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "Milliseconds into the lap at each gate, one per gate, rising, every stretch of 0, times..., split_lap_ms at least 40 ms" },
+    "seq":               { "type": "integer", "description": "The plugin's sequence number for the publication" },
+    "format":            { "type": "integer", "const": 1 },
+    "is_host":           { "type": "boolean", "description": "Always true when sent: only the room host's copy sends it" }
+  },
+  "required": ["actor", "nick", "lap_number", "lap_event_ordinal", "lap_ms", "split_lap_ms", "gates", "times", "seq", "format", "is_host"]
+}

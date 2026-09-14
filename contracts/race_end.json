@@ -11,7 +11,8 @@
     "winner_actor":     { "type": "integer" },
     "winner_nick":      { "type": "string" },
     "winner_total_ms":  { "type": "integer", "minimum": 0 },
-    "winner_total_sec": { "type": "number" }
+    "winner_total_sec": { "type": "number" },
+    "is_host":          { "type": "boolean", "description": "Since 1.4.0. Always true when sent: a copy of the plugin in a room its game doesn't host writes this to its own race log with false and doesn't send it" }
   },
   "required": ["participants", "completed"]
 }

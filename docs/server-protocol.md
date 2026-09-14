@@ -72,6 +72,82 @@ Header   : Authorization: Bearer <ApiKey>
    gap tells the server the game is hung even though the socket is alive
    (`-1` = liveness not wired yet during early startup).
 
+## Host only
+
+Everyone in a room can run the plugin, and before 1.4.0 two copies in one room
+reported every lap twice. Now only the copy in the **host's** game (the Photon
+master client) acts for the room. A copy in a guest's game, in a room someone
+else hosts:
+
+- **sends no timing.** `lap_recorded`, `pilot_reset`, `pilot_complete`,
+  `race_end`, `race_reset` and `lap_splits` go to its own race log, stamped
+  `is_host: false`, and not to the server. A copy that sends them stamps them
+  `is_host: true`.
+- **runs no track, chat or kick command.** `next_track`, `set_track`,
+  `send_chat`, `kick_player`, and `update_playlist` with `apply_immediately`, are
+  acked `not_host` and do nothing else: no race starts and nothing changes.
+- still sends everything else: chat, players, `lobby_status`, `keepalive`,
+  `track_changed`.
+
+Outside a room nothing is anyone else's to do, so commands run as they always did.
+
+`lobby_status` is sent whenever the game joins or leaves a room, or becomes or
+stops being its host: `in_room: true` with `is_host: false` is a guest. The next
+`keepalive`'s `is_host` says the same.
+
+**Taking over.** A guest's copy keeps following every pilot's laps. When the host
+leaves and the room makes this game its host, the plugin sends `lobby_status`
+(`is_host: true`), then starts a race with `race_reset` `reason:
+"host_takeover"`, then a fresh `player_list`. Every pilot's run carries on: the
+laps flown before the takeover were the old host's to report and are not sent
+again, and lap numbers start again at 1. A lap crossed in the moment between the
+old host leaving and the switch can be lost.
+
+## Gate splits from the room
+
+The plugin can't see which gates a pilot flies through. The
+[JMT Liftoff Leaderboard](https://github.com/geekhostuk/jmt-liftoff-leaderboard)
+plugin sees its own pilot's, and after each lap publishes them on its Photon
+player, in one `SetCustomProperties` call:
+
+| Property | Type | Contents |
+|---|---|---|
+| `JMTG` | `string[]` | The lap's gate ids (the checkpoints' GUIDs from the course's `.race` file), in the order flown. Sent only when they differ from the last ones published, or the room changed |
+| `JMTS` | `int[]` | `format` (1), `seq`, `gatesHash`, `lap_ms`, `prev_lap_ms` (0 = none), then one time per gate: milliseconds into the lap |
+
+`gatesHash` is FNV-1a 32 (offset basis `0x811C9DC5`, prime `16777619`) over the
+UTF-8 bytes of the gate ids joined by `\n`, as a signed 32-bit integer. Test
+vectors: `["a", "b"]` gives `0x28E4C710`, and
+`["6c91359a-89ee-4804-a012-79854b4f349d", "38cadf76-dfbd-4e56-866b-6e81f9f7569a",
+"6b1e3cf7-b5fe-4c41-8d1d-3405908264df"]` gives `0x1FCDE9CE`.
+
+The host's copy reads every pilot's. It takes `JMTG` from the update, or from the
+player's properties when the update doesn't carry it, and ignores a `seq` it has
+already had from that pilot. Anyone in a room can set these properties, so it
+refuses a split that isn't a lap: another format, anything but one time for each
+of 1 to 200 gates, a hash that doesn't match the gates, a gate id that isn't
+`[A-Za-z0-9-]{1,64}`, the same gate twice in a row, or any stretch of
+`0, times…, lap_ms` shorter than 40 ms.
+
+It pairs the split with the pilot's newest lap not yet paired, within 2 ms of the
+plugin's `lap_ms` and at most 60 s old, and sends
+[`lap_splits`](../contracts/lap_splits.json). A split that arrives before its lap
+waits up to 5 s for it: the host's own plugin can publish a moment before the
+host's game records the lap. A new race drops any still waiting.
+
+```json
+{ "event_type": "lap_splits", "timestamp_utc": "…", "session_id": "…",
+  "race_id": "r-42", "race_ordinal": 3, "event_ordinal": 131,
+  "actor": 4, "nick": "PilotOne", "steam_id": "7656119…",
+  "lap_number": 2, "lap_event_ordinal": 127, "lap_ms": 41873,
+  "split_lap_ms": 41874, "prev_lap_ms": 42385,
+  "gates": ["6c91359a-…", "38cadf76-…", "6b1e3cf7-…"],
+  "times": [9120, 20455, 31980], "seq": 17, "format": 1, "is_host": true }
+```
+
+`lap_number` and `lap_event_ordinal` name the lap as its `lap_recorded` did, in
+the same race.
+
 ## Commands and acknowledgements
 
 The server sends commands as JSON objects with a `cmd` field and a caller-chosen
@@ -94,8 +170,9 @@ Rules the plugin follows:
     "current_env": "StrawBale", "current_track": "Blockchain", "current_race": "BlockChain" }
   ```
 
-  `status` is `ok`, `error` (with a human-readable `message`), or
-  `skipped_stale`. Acks for state-changing commands include the bot's *actual*
+  `status` is `ok`, `error` (with a human-readable `message`),
+  `skipped_stale`, or `not_host` (the game is a guest in a room someone else
+  hosts; see [Host only](#host-only)). Acks for state-changing commands include the bot's *actual*
   current env/track/race read back from Photon room properties, so the server
   can verify the change landed rather than trusting the ack.
 

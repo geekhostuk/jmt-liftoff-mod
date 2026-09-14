@@ -13,7 +13,8 @@
     "laps_logged":  { "type": "integer", "minimum": 0 },
     "lap_times_ms": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "Individual lap times in ms" },
     "total_ms":     { "type": "integer", "minimum": 0, "description": "Total time in milliseconds" },
-    "total_sec":    { "type": "number", "description": "Total time in seconds" }
+    "total_sec":    { "type": "number", "description": "Total time in seconds" },
+    "is_host":      { "type": "boolean", "description": "Since 1.4.0. Always true when sent: a copy of the plugin in a room its game doesn't host writes this to its own race log with false and doesn't send it" }
   },
   "required": ["actor", "nick", "reason", "laps_logged", "total_ms"]
 }

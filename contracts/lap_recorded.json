@@ -15,7 +15,8 @@
     "lap_ms":         { "type": "integer", "minimum": 0, "description": "Lap time in milliseconds" },
     "lap_sec":        { "type": "number", "description": "Lap time in seconds (derived)" },
     "delta_prev_ms":  { "type": ["integer", "null"], "description": "Delta vs previous lap" },
-    "delta_best_ms":  { "type": ["integer", "null"], "description": "Delta vs personal best" }
+    "delta_best_ms":  { "type": ["integer", "null"], "description": "Delta vs personal best" },
+    "is_host":        { "type": "boolean", "description": "Since 1.4.0. Always true when sent: a copy of the plugin in a room its game doesn't host writes this to its own race log with false and doesn't send it" }
   },
   "required": ["actor", "nick", "lap_ms", "lap_number"]
 }

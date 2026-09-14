@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "lobby_status.json",
   "title": "lobby_status",
-  "description": "Lobby state snapshot sent by the plugin on player enter/leave/host change or on request",
+  "description": "Lobby state snapshot sent by the plugin on player enter/leave, when its game joins or leaves a room or becomes or stops being its host, or on request",
   "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
   "properties": {
     "event_type":    { "const": "lobby_status" },
@@ -11,7 +11,7 @@
     "room_name":     { "type": "string", "description": "Name of the current Photon room" },
     "player_count":  { "type": "integer", "minimum": 0, "description": "Current player count in room" },
     "max_players":   { "type": "integer", "minimum": 0, "description": "Room max players setting" },
-    "is_host":       { "type": "boolean", "description": "Whether this bot is the Photon master client" },
+    "is_host":       { "type": "boolean", "description": "Whether this game is the Photon master client: the room's host. in_room true with is_host false is a guest, whose copy of the plugin sends no timing and runs no track, chat or kick command" },
     "is_open":       { "type": "boolean", "description": "Whether the room is open for joining" },
     "is_visible":    { "type": "boolean", "description": "Whether the room is visible in the room list" },
     "network_state": { "type": "string", "description": "Photon NetworkClientState enum value" },
