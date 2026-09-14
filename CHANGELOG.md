@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
-## [1.4.0] — Unreleased
+## [1.4.0] — 2026-09-14
 
 Only the copy of the plugin in the room host's game acts for the room, and it sends
 each pilot's gate splits along with their laps. Includes the clean-up that was to be
