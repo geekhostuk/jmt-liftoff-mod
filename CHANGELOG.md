@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
-## [Unreleased]
+## [1.6.0] — 2026-09-15
 
 The room remembers the playlist it's running, so when its host leaves, the next host's
 Liftoff Control can carry it on where it left off. Liftoff Control 1.22.0 uses it; an older
