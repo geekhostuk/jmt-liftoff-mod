@@ -4,7 +4,12 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
-## [Unreleased]
+## [1.5.0] — 2026-09-15
+
+Resetting on the start line is no longer a failed attempt, and the mod logs any frame that
+stutters with how much of it was its own work. Liftoff Control 1.21.0 passes the new
+`attempt_from` on to the site; an older one drops it, and the site then gives the reset the
+plain five-second floor.
 
 ### Added
 
