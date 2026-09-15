@@ -56,6 +56,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private const int ClassicRaceLapCount = 3;
     private static readonly string LapTimesSuffix = "_laptimes";
     private readonly GmsLapReader _gmsLaps = new();
+    private StartWatch _startWatch = null!;
 
     /// <summary>The most laps a GMS lap list may hold and still be read.</summary>
     private int GmsLapCap => _maxLapsPerRace.Value > 0 ? _maxLapsPerRace.Value : 100;
@@ -314,6 +315,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         DontDestroyOnLoad(gameObject);
         gameObject.hideFlags = HideFlags.HideAndDontSave;
         FrameProbe.Install(message => _log.LogInfo(message));
+        _startWatch = new StartWatch(message => _log.LogInfo(message));
         _gui = gameObject.AddComponent<DebugGui>();
         _gui.enabled = false;
         _gui.Draw = () =>
@@ -734,6 +736,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         WatchRoomTrack();
         NoteHostState();
         ExpirePendingSplits();
+        _startWatch.Poll(DateTime.UtcNow);
 
         // After a Photon disconnect+reconnect, send a fresh player list so the
         // server drops stale players from the old lobby.
@@ -1147,6 +1150,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _lastActivityEmitUtc.Remove(otherPlayer.ActorNumber);
         _actorGmsRun.Remove(otherPlayer.ActorNumber);
         _actorSpawnUtc.Remove(otherPlayer.ActorNumber);
+        _startWatch.Forget(otherPlayer.ActorNumber);
         _actorLastLapUtc.Remove(otherPlayer.ActorNumber);
         _actorRecentLaps.Remove(otherPlayer.ActorNumber);
         _actorLapRefs.Remove(otherPlayer.ActorNumber);
@@ -1737,6 +1741,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private void OnGmsRespawn(int actor)
     {
         var now = DateTime.UtcNow;
+        var began = _startWatch.Respawned(actor);
         var hadSpawn = _actorSpawnUtc.TryGetValue(actor, out var lastSpawn);
         var hadLap = _actorLastLapUtc.TryGetValue(actor, out var lastLap);
         _actorSpawnUtc[actor] = now;
@@ -1749,15 +1754,33 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             return;
 
         var lapsInRun = _actorGmsRun.TryGetValue(actor, out var run) ? run.Count : 0;
-        // Flying on from a lap, the abandoned attempt began as that lap ended. Otherwise it
-        // began at the last respawn, so it includes the wait there and the run-up to the line.
+        // Flying on from a lap, the abandoned attempt began as that lap ended. After a respawn
+        // it began when the drone left the start; one that never left made no attempt at all.
+        // A drone that wasn't followed from the start is timed from the respawn, which counts
+        // the wait there too: the server allows those longer before they count as failed.
         var fromLap = hadLap && (!hadSpawn || lastLap > lastSpawn);
-        var attemptMs = (int)(now - (fromLap ? lastLap : lastSpawn)).TotalMilliseconds;
+        string from;
+        int attemptMs;
+        if (fromLap)
+        {
+            from = "lap";
+            attemptMs = (int)(now - lastLap).TotalMilliseconds;
+        }
+        else if (began is { } seen)
+        {
+            from = "start";
+            attemptMs = seen.LeftAt is { } left ? (int)(now - left).TotalMilliseconds : 0;
+        }
+        else
+        {
+            from = "respawn";
+            attemptMs = (int)(now - lastSpawn).TotalMilliseconds;
+        }
 
         ResetPilotState(actor, "respawn", new Dictionary<string, object?>
         {
             ["attempt_ms"] = attemptMs,
-            ["attempt_from"] = fromLap ? "lap" : "respawn",
+            ["attempt_from"] = from,
             ["laps_in_run"] = lapsInRun,
         });
     }
@@ -2121,6 +2144,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             _actorToRaceState.Clear();
             _actorGmsRun.Clear();
             _actorSpawnUtc.Clear();
+            _startWatch.Clear();
             _actorLastLapUtc.Clear();
         }
         _needGmsBaseline = false;

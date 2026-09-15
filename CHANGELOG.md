@@ -14,6 +14,14 @@ All notable changes to this project are documented here. The format is based on
   whether a garbage collection ran. Every five minutes in a room a `[Perf]` summary follows,
   with the mod's average and worst cost per frame. The watchdog only speaks up after five
   seconds, so a stutter a pilot feels left no trace until now.
+- **A reset after a respawn is timed from when the drone left the start.** After a respawn
+  the drone waits at the spawn point until the pilot arms and the countdown runs, and that
+  wait was counted as part of the attempt, so sitting on the line and resetting was charged
+  as a failed attempt. The host now follows every drone's position (the pilot's `DID` view,
+  its own included) and sends `pilot_reset` with `attempt_from: "start"`, timed from the
+  moment the drone got more than 5 m from the spawn point, or `attempt_ms: 0` when it never
+  left. A drone it could not follow is timed from the respawn as before, with
+  `attempt_from: "respawn"`; the site gives those longer before they count.
 
 ### Changed
 

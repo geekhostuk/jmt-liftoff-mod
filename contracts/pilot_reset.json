@@ -9,8 +9,8 @@
     "actor":        { "type": "integer", "description": "Photon actor number" },
     "nick":         { "type": "string" },
     "reason":       { "type": "string", "description": "\"respawn\" (seen as it happened) or \"gms_series_mismatch\" (inferred at the next lap)" },
-    "attempt_ms":   { "type": "integer", "minimum": 0, "description": "respawn only: how long the abandoned attempt ran, from attempt_from to the reset" },
-    "attempt_from": { "type": "string", "enum": ["lap", "respawn"], "description": "respawn only: \"lap\" when the pilot was flying on from a completed lap; \"respawn\" when measured from their previous respawn, so including the wait at the start and the run-up to the line" },
+    "attempt_ms":   { "type": "integer", "minimum": 0, "description": "respawn only: how long the abandoned attempt ran, from attempt_from to the reset. 0 with \"start\" when the drone never left the start: no attempt was made" },
+    "attempt_from": { "type": "string", "enum": ["lap", "start", "respawn"], "description": "respawn only: \"lap\" when the pilot was flying on from a completed lap; \"start\" (since 1.5.0) when measured from the moment the drone left the start after its previous respawn; \"respawn\" when measured from the previous respawn, so including the wait at the start and the run-up to the line -- what every version before 1.5.0 sent, and what 1.5.0 sends when it could not follow the drone" },
     "laps_in_run":  { "type": "integer", "minimum": 0, "description": "respawn only: laps completed since the pilot's previous respawn" },
     "is_host":      { "type": "boolean", "description": "Since 1.4.0. Always true when sent: a copy of the plugin in a room its game doesn't host writes this to its own race log with false and doesn't send it" }
   },
