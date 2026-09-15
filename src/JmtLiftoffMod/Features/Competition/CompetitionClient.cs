@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BepInEx.Logging;
 using JmtLiftoffMod.Features.Diagnostics;
+using JmtLiftoffMod.Features.Lobby;
 using JmtLiftoffMod.Features.MultiplayerTrackControl;
 using JmtLiftoffMod.Features.Racing;
 using Photon.Pun;
@@ -40,6 +41,8 @@ internal sealed class CompetitionClient : IDisposable
     private readonly Action<int>? _onKickPlayer;
     private readonly Action? _onTrackChanging;
     private readonly Action? _onConnected;
+    // A connection that had opened has closed. Not called for attempts that never connected.
+    private readonly Action? _onDisconnected;
     private readonly Action? _onLobbyStatusRequested;
     // True while this game is a guest in someone else's room: only the host's copy acts.
     private readonly Func<bool>? _isRoomGuest;
@@ -71,7 +74,8 @@ internal sealed class CompetitionClient : IDisposable
         Action? onConnected = null,
         Action? onLobbyStatusRequested = null,
         Func<long>? getMainThreadLastTickUtcMs = null,
-        Func<bool>? isRoomGuest = null)
+        Func<bool>? isRoomGuest = null,
+        Action? onDisconnected = null)
     {
         _config = config;
         _log = log;
@@ -86,6 +90,7 @@ internal sealed class CompetitionClient : IDisposable
         _onConnected = onConnected;
         _onLobbyStatusRequested = onLobbyStatusRequested;
         _isRoomGuest = isRoomGuest;
+        _onDisconnected = onDisconnected;
     }
 
     /// <summary>
@@ -207,18 +212,26 @@ internal sealed class CompetitionClient : IDisposable
         _log.LogInfo("[Competition] Connected.");
         RunOnMainThread(() => _onConnected?.Invoke());
 
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        try
+        {
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-        var sendTask    = SendLoopAsync(ws, linkedCts.Token);
-        var receiveTask = ReceiveLoopAsync(ws, linkedCts.Token);
+            var sendTask    = SendLoopAsync(ws, linkedCts.Token);
+            var receiveTask = ReceiveLoopAsync(ws, linkedCts.Token);
 
-        // If either loop exits, cancel the other and exit so we reconnect
-        await Task.WhenAny(sendTask, receiveTask);
-        linkedCts.Cancel();
+            // If either loop exits, cancel the other and exit so we reconnect
+            await Task.WhenAny(sendTask, receiveTask);
+            linkedCts.Cancel();
 
-        try { await Task.WhenAll(sendTask, receiveTask); } catch { /* swallow */ }
+            try { await Task.WhenAll(sendTask, receiveTask); } catch { /* swallow */ }
 
-        _log.LogInfo("[Competition] Connection closed.");
+            _log.LogInfo("[Competition] Connection closed.");
+        }
+        finally
+        {
+            // Nothing is connected until the next connect succeeds. Skipped once disposed.
+            RunOnMainThread(() => _onDisconnected?.Invoke());
+        }
     }
 
     private async Task SendLoopAsync(ClientWebSocket ws, CancellationToken ct)
@@ -516,6 +529,31 @@ internal sealed class CompetitionClient : IDisposable
                         catch (Exception ex) { _log.LogWarning($"[Competition] update_playlist failed: {ex.GetType().Name}: {ex.Message}"); EmitCommandAck(commandId, "error", ex.Message); }
                     });
                 }
+                break;
+
+            case "set_room_playlist":
+                fields.TryGetValue("state", out var roomPlaylist);
+                var roomPlaylistSize = roomPlaylist == null ? "no state" : $"{Encoding.UTF8.GetByteCount(roomPlaylist)} bytes";
+                _log.LogInfo($"[Competition] set_room_playlist received — {roomPlaylistSize} command_id={commandId}");
+                // Not staleable: only the latest state matters, and writing it is cheap and
+                // idempotent, so one picked up after a hang is still worth writing.
+                RunOnMainThread(() =>
+                {
+                    if (RefuseAsGuest("set_room_playlist", commandId)) return;
+                    try
+                    {
+                        if (RoomPlaylist.TryWrite(roomPlaylist, out var error))
+                        {
+                            EmitCommandAck(commandId, "ok");
+                        }
+                        else
+                        {
+                            _log.LogWarning($"[Competition] set_room_playlist not stored: {error}");
+                            EmitCommandAck(commandId, "error", error);
+                        }
+                    }
+                    catch (Exception ex) { _log.LogWarning($"[Competition] set_room_playlist failed: {ex.GetType().Name}: {ex.Message}"); EmitCommandAck(commandId, "error", ex.Message); }
+                });
                 break;
 
             case "request_catalog":

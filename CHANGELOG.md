@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
+## [Unreleased]
+
+The room remembers the playlist it's running, so when its host leaves, the next host's
+Liftoff Control can carry it on where it left off. Liftoff Control 1.22.0 uses it; an older
+one never sends the new command, and nothing changes.
+
+### Added
+
+- **The room holds the controller's playlist.** The new `set_room_playlist` command stores
+  the controller's playlist state, an opaque string of at most 2048 bytes, on the Photon
+  room as `JMTP`, with the server time it was written as `JMTPt`. Only the host's copy
+  writes it; a guest's acks `not_host`. The room outlives its host, and so does the state.
+- **Every copy reports it.** The new `room_playlist` event tells the controller the room's
+  state and how old it is: when it changes, when the game joins a room, when the game takes
+  over as host (before its `race_reset`), and when the controller connects. It isn't host
+  only, so a guest's controller can show what the room is running.
+- **Pilots with a controller are marked.** While the plugin is connected to a controller it
+  sets `JMTC` to 1 on its player, and removes it when the connection drops.
+- **The host hands on to a pilot with a controller.** A host that leaves normally (back to
+  the menu, into another room, or quitting the game) first makes the other pilot with the
+  lowest actor number whose `JMTC` is 1 the host, so a controller is there to carry the
+  playlist on. With none, or after a crash, Photon picks the next host as before.
+
+### Changed
+
+- **Commands decode every JSON string escape.** `\uXXXX`, `\b` and `\f` in a command's
+  string values were kept as letters; they now decode to their characters.
+- **`playlist_state` is marked legacy.** It was the old competition server's broadcast, and
+  nothing sends it.
+
 ## [1.5.0] — 2026-09-15
 
 Resetting on the start line is no longer a failed attempt, and the mod logs any frame that

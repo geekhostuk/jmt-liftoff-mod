@@ -35,7 +35,7 @@ connected.
 | `Features/Chat` | `ChatCaptureService` | Captures in-game chat messages and forwards them as `chat_message` events. |
 | `Features/Competition` | `CompetitionClient`, `CompetitionConfig`, `SimpleJsonParser`, `CommandTimingContext` | The server link: persistent WebSocket, event outbox, command dispatch, acks. See [server-protocol.md](server-protocol.md). |
 | `Features/Diagnostics` | `BotStatsOverlay`, `CompetitionStats` | Optional on-screen stats overlay. |
-| `Features/Lobby` | `LobbyStatusService` | Emits `lobby_status` snapshots on change or on request. |
+| `Features/Lobby` | `LobbyStatusService`, `RoomPlaylist`, `HostHandover` | Emits `lobby_status` snapshots on change or on request. Keeps the controller's playlist state on the room (`JMTP`), marks a pilot whose plugin has a controller connected (`JMTC`), and hands host on to such a pilot when the host leaves. See [Room playlist and handover](server-protocol.md#room-playlist-and-handover). |
 | `Features/MultiplayerTrackControl` | `MultiplayerTrackControlService` + 11 supporting types | The host-control layer: discovers Liftoff's multiplayer setup UI (`PopupQuickPlayMultiplayerSetup`, content/room settings panels) **by reflection**, detects host state, and executes track/race/environment/workshop changes and game creation through the game's own UI flow. See [multiplayer-track-control.md](multiplayer-track-control.md). |
 | `Features/Racing` | `RoomTrackWatcher` | Reads the room's track from its Photon properties, so a track picked in game starts a race and sends `track_changed`. Gate timing is not done here: it lives in the separate [JMT Liftoff Leaderboard](https://github.com/geekhostuk/jmt-liftoff-leaderboard) plugin. |
 

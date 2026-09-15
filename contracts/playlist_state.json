@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "playlist_state.json",
   "title": "playlist_state",
-  "description": "Broadcast by the server with the current playlist runner status",
+  "description": "Legacy: nothing sends this now. It was broadcast by the old competition server with its playlist runner status. The playlist a room is running now comes from the plugin as room_playlist (the room property JMTP)",
   "allOf": [{ "$ref": "common.json#/$defs/serverEvent" }],
   "properties": {
     "event_type":     { "const": "playlist_state" },

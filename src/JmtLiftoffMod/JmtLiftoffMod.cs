@@ -133,6 +133,14 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         "lap_recorded", "pilot_reset", "pilot_complete", "race_end", "race_reset", "lap_splits",
     };
 
+    // ── Room playlist and handover ──
+    // The controller keeps its playlist state on the room (RoomPlaylist), and each copy marks
+    // its pilot while a controller is connected to it (JMTC). A host leaving normally hands the
+    // room on to such a pilot (HostHandover), whose controller carries the playlist on.
+    private HostHandover? _hostHandover;
+    // Whether a controller is connected to this copy. Main thread only.
+    private bool _controllerConnected;
+
     // ── Gate splits from the room ──
     // Each pilot's JMT Liftoff Leaderboard plugin publishes its lap's gate times on its player
     // (RoomSplitCodec). The host pairs them with the lap it recorded for that pilot and sends
@@ -528,9 +536,13 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                     SerializeJsonObject(SessionStartedPayload())
                 );
                 EmitPlayerList();
+                SetControllerFlag(true);
+                // Outside a room too (in_room false), so the controller knows there is none.
+                EmitRoomPlaylist("the controller connected");
             },
             getMainThreadLastTickUtcMs: () => GetMainThreadLastTickUtcMs(),
-            isRoomGuest: IsRoomGuest);
+            isRoomGuest: IsRoomGuest,
+            onDisconnected: () => SetControllerFlag(false));
         _competitionClient.Start();
 
         _chatCapture = new ChatCaptureService(Logger, PluginGuid, (userId, userName, message) =>
@@ -566,6 +578,10 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             });
         });
         _chatCapture.Install();
+
+        _hostHandover = new HostHandover(Logger, PluginGuid);
+        _hostHandover.Install();
+        Application.quitting += OnGameQuitting;
 
         // Re-send session_started now that the client exists so the server receives it and can
         // create the session row before any race events. Deliberately after chat capture is
@@ -786,6 +802,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
     protected void OnApplicationQuit()
     {
+        // First, while Photon is still connected: its own handler disconnects as the game closes.
+        _hostHandover?.HandOn("Quitting the game");
         _isQuitting = true;
         DisposeServices();
         TryUnregister();
@@ -795,10 +813,15 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _logWriterThread?.Join(TimeSpan.FromSeconds(2));
     }
 
+    /// <summary>Application.quitting: the same moment as OnApplicationQuit, whichever Unity runs first.</summary>
+    private void OnGameQuitting() => _hostHandover?.HandOn("Quitting the game");
+
     private void DisposeServices()
     {
         _chatCapture?.Dispose();
         _chatCapture = null;
+        _hostHandover?.Dispose();
+        _hostHandover = null;
         _competitionClient?.Dispose();
         _competitionClient = null;
         _multiplayerTrackControl?.Dispose();
@@ -1177,6 +1200,10 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                 StartNewRace("room_sgso_start");
         }
 
+        // The controller's playlist state, as the host's copy wrote it: every copy passes it on.
+        if (propertiesThatChanged.ContainsKey(RoomPlaylist.StateKey))
+            EmitRoomPlaylist("the room's playlist changed");
+
         AppendStateLine(() => $"Room properties updated: {Describe(propertiesThatChanged)}");
         _multiplayerTrackControl?.OnRoomPropertiesUpdate(propertiesThatChanged);
     }
@@ -1218,9 +1245,10 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     /// <summary>
     /// Notices, once, this game joining or leaving a room, or becoming or ceasing to be its
     /// host. The keepalive's cached room state is refreshed so the next keepalive can't
-    /// contradict the change, and a lobby_status tells the server. A guest becoming the host
-    /// takes over the room's timing. Runs every frame, so it holds whichever way the change
-    /// arrives. Returns whether anything changed.
+    /// contradict the change, and a lobby_status tells the server. Joining a room marks this
+    /// pilot's controller again and reports the room's playlist (nothing here is called back on
+    /// a join); a guest becoming the host takes over the room's timing. Runs every frame, so it
+    /// holds whichever way the change arrives. Returns whether anything changed.
     /// </summary>
     private bool NoteHostState()
     {
@@ -1239,6 +1267,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                 ? "[Host] This game is the room's host: its copy times the room and runs commands."
                 : "[Host] This game is a guest in the room: its copy follows the laps but sends no timing and runs no track, chat or kick command.");
         _lobbyStatus?.EmitLobbyStatus();
+        if (now.InRoom && was?.InRoom != true)
+            NoteJoinedRoom();
         if (was == (true, false) && now == (true, true))
             TakeOverAsHost();
         return true;
@@ -1253,6 +1283,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     {
         _log.LogInfo("[Host] The room's host left and this game is the host now: taking over the timing.");
         ReadRoomPlayers();
+        // Before the race starts, so the controller has the room's playlist when it hears of it.
+        EmitRoomPlaylist("took over as host");
         StartNewRace("host_takeover", keepRuns: true);
         EmitPlayerList();
         try { DisableLiftoffInactivityKick(); } catch { /* best effort */ }
@@ -1286,6 +1318,66 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                 _actorGmsRun[actor] = lapTimesSec.Select(v => (int)Math.Round(v * 1000d)).ToList();
                 _log.LogInfo($"[Host] GMS baseline set for actor {actor}: {lapTimesSec.Count} lap(s) the previous host reported");
             }
+        }
+    }
+
+    // ── Room playlist and handover ───────────────────────────────────────────
+
+    /// <summary>
+    /// This game has just joined a room. Its controller is marked again, in case the mark set
+    /// outside the room didn't come along, and the controller hears what the room is running.
+    /// </summary>
+    private void NoteJoinedRoom()
+    {
+        try
+        {
+            if (_controllerConnected)
+                RoomPlaylist.SetControllerFlag(true);
+            else if (RoomPlaylist.HasController(PhotonNetwork.LocalPlayer))
+                RoomPlaylist.SetControllerFlag(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[RoomPlaylist] Marking the controller on joining failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        EmitRoomPlaylist("joined a room");
+    }
+
+    /// <summary>A controller connected to this copy, or went: JMTC on this pilot says so.</summary>
+    private void SetControllerFlag(bool connected)
+    {
+        _controllerConnected = connected;
+        try
+        {
+            var sent = RoomPlaylist.SetControllerFlag(connected);
+            var what = connected ? "Controller connected: JMTC set" : "Controller gone: JMTC removed";
+            _log.LogInfo(sent
+                ? $"[RoomPlaylist] {what} on this pilot."
+                : $"[RoomPlaylist] {what}, but Photon took no change now; it is set again on joining a room.");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[RoomPlaylist] Setting JMTC failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Tells the controller the room's playlist state (room_playlist). Not host only: a guest's
+    /// controller shows what the room is running, and needs it to carry on if it becomes host.
+    /// </summary>
+    private void EmitRoomPlaylist(string why)
+    {
+        try
+        {
+            var payload = RoomPlaylist.Snapshot();
+            _log.LogInfo(payload["state"] is string state
+                ? $"[RoomPlaylist] room_playlist ({why}): {Encoding.UTF8.GetByteCount(state)} bytes, written {payload["age_ms"] ?? "?"} ms ago"
+                : $"[RoomPlaylist] room_playlist ({why}): {(PhotonNetwork.InRoom ? "the room has no playlist state" : "not in a room")}");
+            AppendRaceEvent("room_playlist", payload);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning($"[RoomPlaylist] Could not send room_playlist: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

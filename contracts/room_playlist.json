@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "room_playlist.json",
+  "title": "room_playlist",
+  "description": "Emitted by the plugin (since 1.6.0) with the playlist state stored on the room (the JMTP room property that set_room_playlist writes). Not host only: a guest's copy sends it too. Sent when the room's JMTP changes (the host's own write included), when the game joins a room, when the game takes over as host (before the race_reset host_takeover), and after session_started each time the controller connects. Outside a room, the one sent on connecting says in_room false, with state and age_ms null. See server-protocol.md, Room playlist and handover",
+  "allOf": [{ "$ref": "common.json#/$defs/eventMeta" }],
+  "properties": {
+    "event_type": { "const": "room_playlist" },
+    "in_room":    { "type": "boolean", "description": "Whether the game is in a Photon room" },
+    "is_host":    { "type": "boolean", "description": "Whether this game is the room's host: the Photon master client" },
+    "state":      { "type": ["string", "null"], "description": "The room's JMTP property: an opaque string owned by the controller, as set_room_playlist stored it. null when the room has none, or outside a room. Anyone in a room can write its properties, so check it before acting on it" },
+    "age_ms":     { "type": ["integer", "null"], "description": "How long ago the state was written, on the Photon server's clock: PhotonNetwork.ServerTimestamp minus the room's JMTPt, in wrapping 32-bit arithmetic. Each game's ServerTimestamp is its own estimate of the server's, so it can be a few milliseconds below zero. null when there is no state" }
+  },
+  "required": ["in_room", "is_host", "state", "age_ms"]
+}

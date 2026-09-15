@@ -84,10 +84,11 @@ else hosts:
   `is_host: false`, and not to the server. A copy that sends them stamps them
   `is_host: true`.
 - **runs no track, chat or kick command.** `next_track`, `set_track`,
-  `send_chat`, `kick_player`, and `update_playlist` with `apply_immediately`, are
-  acked `not_host` and do nothing else: no race starts and nothing changes.
+  `send_chat`, `kick_player`, `update_playlist` with `apply_immediately`, and
+  `set_room_playlist`, are acked `not_host` and do nothing else: no race starts and
+  nothing changes.
 - still sends everything else: chat, players, `lobby_status`, `keepalive`,
-  `track_changed`.
+  `track_changed`, `room_playlist`.
 
 Outside a room nothing is anyone else's to do, so commands run as they always did.
 
@@ -97,8 +98,9 @@ stops being its host: `in_room: true` with `is_host: false` is a guest. The next
 
 **Taking over.** A guest's copy keeps following every pilot's laps. When the host
 leaves and the room makes this game its host, the plugin sends `lobby_status`
-(`is_host: true`), then starts a race with `race_reset` `reason:
-"host_takeover"`, then a fresh `player_list`. Every pilot's run carries on: the
+(`is_host: true`), then `room_playlist` with the playlist the room was running
+(see [Room playlist and handover](#room-playlist-and-handover)), then starts a race
+with `race_reset` `reason: "host_takeover"`, then a fresh `player_list`. Every pilot's run carries on: the
 laps flown before the takeover were the old host's to report and are not sent
 again, and lap numbers start again at 1. A lap crossed in the moment between the
 old host leaving and the switch can be lost.
@@ -147,6 +149,64 @@ host's game records the lap. A new race drops any still waiting.
 
 `lap_number` and `lap_event_ordinal` name the lap as its `lap_recorded` did, in
 the same race.
+
+## Room playlist and handover
+
+Since 1.6.0. When the room's host leaves, the next host's controller should carry
+on the playlist the room was running, where it left off. So the controller keeps
+its playlist state on the Photon **room**, through the host's copy of the plugin,
+and the room outlives its host. The plugin never reads the state: it is an opaque
+string owned by the controller.
+
+| Key | On | Type | Contents |
+|---|---|---|---|
+| `JMTP` | The room | `string` | The controller's playlist state, at most 2048 UTF-8 bytes |
+| `JMTPt` | The room | `int` | `PhotonNetwork.ServerTimestamp` when `JMTP` was written |
+| `JMTC` | Each player | `int` | 1 while that pilot's copy of the plugin has a controller connected. Removed when the connection drops |
+
+**Writing it.** [`set_room_playlist`](../contracts/set_room_playlist.json) sets `JMTP`
+and `JMTPt` in one `SetCustomProperties` call. Only the host's copy writes them: a
+guest's acks `not_host`. The command is never dropped as stale, since only the
+latest state matters and writing it is cheap.
+
+**Reading it.** Every copy of the plugin, a guest's included, sends
+[`room_playlist`](../contracts/room_playlist.json):
+
+- when the room's `JMTP` changes, the host's own write included;
+- when the game joins a room;
+- when the game takes over as host, before the `race_reset` `host_takeover`;
+- after `session_started`, each time the controller connects. Outside a room this
+  one says `in_room: false`, with `state` and `age_ms` null.
+
+```json
+{ "event_type": "room_playlist", "timestamp_utc": "…", "session_id": "…",
+  "race_id": "r-42", "race_ordinal": 3, "event_ordinal": 12,
+  "in_room": true, "is_host": false, "state": "…", "age_ms": 1234 }
+```
+
+`state` is the room's `JMTP`, or null when it has none. `age_ms` is how long ago
+it was written, on the Photon server's clock: `ServerTimestamp - JMTPt` in wrapping
+32-bit arithmetic, and null without a state. Each game's `ServerTimestamp` is its
+own estimate of the server's clock, so `age_ms` can be a few milliseconds below
+zero. Anyone in a room can write its properties, so a controller should check what
+it reads before acting on it.
+
+**Marking pilots with a controller.** While the plugin is connected to a controller
+it sets `JMTC` to 1 on the local player, and removes it when the connection drops.
+Set outside a room, Photon keeps it on the player and sends it along when the game
+joins its next room; the plugin sets it again on every join anyway. `JMTC` says
+only that the pilot's plugin has a controller connected.
+
+**Handing host on.** When this game is the room's host and leaves normally, the
+plugin first makes the other player with the lowest actor number whose `JMTC` is 1
+the host (`PhotonNetwork.SetMasterClient`), so the room goes to a pilot whose
+controller can carry the playlist on. Leaving normally is the game leaving the room
+or disconnecting from Photon (going back to the menu, moving to another room,
+`leave_lobby`, `disconnect`), or the game quitting. The switch is sent at once,
+ahead of the leave on the same reliable channel, so the room has its new host
+before this game is gone. With no such player the plugin does nothing and Photon
+picks the next host as usual; so it does after a crash or a lost connection. The
+plugin hands a room on once at most, and never to itself.
 
 ## Commands and acknowledgements
 

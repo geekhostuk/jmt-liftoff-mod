@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "set_room_playlist.json",
+  "title": "set_room_playlist",
+  "description": "Command sent from server to plugin (since 1.6.0) to store the controller's playlist state on the Photon room, so the room's next host can carry the playlist on. Host only: a guest acks not_host. Not in a room: acked error 'not in a room'. A state longer than 2048 UTF-8 bytes: acked error 'state too long'. Otherwise the plugin sets the room properties JMTP (the state) and JMTPt (PhotonNetwork.ServerTimestamp) in one SetCustomProperties call and acks ok. Not staleable: only the latest state matters and writing it is cheap. See server-protocol.md, Room playlist and handover",
+  "type": "object",
+  "properties": {
+    "cmd":        { "const": "set_room_playlist" },
+    "command_id": { "type": "string" },
+    "state":      { "type": "string", "description": "The controller's playlist state: an opaque string owned by the controller, at most 2048 UTF-8 bytes. The plugin stores it as it is and never reads it" }
+  },
+  "required": ["cmd", "state"]
+}

@@ -32,10 +32,15 @@ Conventions:
 | `create_game` | ✔ | — | — | Open Liftoff's create-game flow and host a new room. |
 | `request_catalog` | — | — | — | Capture the full environment/track catalog from the open track-selection popup and emit a `track_catalog` event. Fails (`error` ack) if the popup isn't available. |
 | `prepare_track` | — | — | `env`, `track`, `race` | **Deprecated no-op** — kept so older servers don't time out; acked `ok`/`no-op`. Schema: [`prepare_track.json`](../contracts/prepare_track.json) |
+| `set_room_playlist` | — | ✔ | `state` (string, at most 2048 UTF-8 bytes) | Since 1.6.0. Store the controller's playlist state on the room, as the room properties `JMTP` and `JMTPt` (the server time it was written), so the room's next host can carry the playlist on. The state is an opaque string owned by the controller. Acked `error` with `not in a room` or `state too long`. See [Room playlist and handover](server-protocol.md#room-playlist-and-handover). Schema: [`set_room_playlist.json`](../contracts/set_room_playlist.json) |
 
 ```json
 { "cmd": "set_track", "command_id": "st-1786800123",
   "env": "StrawBale", "track": "Blockchain", "race": "BlockChain", "workshop_id": "" }
+```
+
+```json
+{ "cmd": "set_room_playlist", "command_id": "rp-1786800124", "state": "…" }
 ```
 
 ### Lobby / player management
@@ -103,6 +108,7 @@ guest's copy writes them to its own race log with `is_host: false`. See
 | [`lobby_status`](../contracts/lobby_status.json) | On enter/leave, when the game joins or leaves a room or becomes or stops being its host, or on `request_lobby_status` | `in_room`, `in_lobby`, `room_name`, `player_count`, `max_players`, `is_host`, `is_open`, `is_visible`, `network_state`, `current_env/track/race` |
 | [`chat_message`](../contracts/chat_message.json) | Player chats (on receipt — backlog is not replayed, see [chat-capture.md](chat-capture.md)) | `actor`, `user_id`, `nick`, `message`, `chat_id`, `self` |
 | [`kick_result`](../contracts/kick_result.json) | After `kick_player` | `actor`, `nick`, `success`, `reason` |
+| [`room_playlist`](../contracts/room_playlist.json) | Since 1.6.0. The room's playlist state (`JMTP`) changes, the game joins a room, the game takes over as host (before its `race_reset`), or the controller connects. Not host only. See [Room playlist and handover](server-protocol.md#room-playlist-and-handover) | `in_room`, `is_host`, `state`, `age_ms` |
 
 ### Track state
 
@@ -117,3 +123,6 @@ The remaining schemas in `contracts/` (`competition_*`, `playlist_state`,
 `state_snapshot`) describe events the
 **server** derives and broadcasts to browser/dashboard clients — they are part of
 the wider contract set for reference, but are not sent by the plugins.
+`playlist_state` is legacy: it was the old competition server's playlist
+broadcast, and nothing sends it now. The playlist a room is running travels as
+`room_playlist`.

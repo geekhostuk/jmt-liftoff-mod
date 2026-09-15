@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace JmtLiftoffMod.Features.Competition;
 
@@ -91,6 +92,14 @@ internal static class SimpleJsonParser
                     case 'n':  sb.Append('\n'); break;
                     case 'r':  sb.Append('\r'); break;
                     case 't':  sb.Append('\t'); break;
+                    case 'b':  sb.Append('\b'); break;
+                    case 'f':  sb.Append('\f'); break;
+                    case 'u' when pos + 4 <= s.Length
+                        && int.TryParse(s.Substring(pos, 4), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var code):
+                        // A surrogate pair arrives as two escapes, one char each.
+                        sb.Append((char)code);
+                        pos += 4;
+                        break;
                     default:   sb.Append(esc);  break;
                 }
             }
