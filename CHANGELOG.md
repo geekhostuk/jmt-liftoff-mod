@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
 [Semantic Versioning](https://semver.org/) — see [docs/versioning.md](docs/versioning.md).
 
+## [Unreleased]
+
+### Added
+
+- **Slow frames are logged.** Every entry point the game calls the mod through is timed.
+  A frame far slower than the usual one (three times as long, and at least 25 ms) is written
+  to the BepInEx log as `[Perf] Slow frame`, with how much of it was the mod's own code and
+  whether a garbage collection ran. Every five minutes in a room a `[Perf]` summary follows,
+  with the mod's average and worst cost per frame. The watchdog only speaks up after five
+  seconds, so a stutter a pilot feels left no trace until now.
+
+### Changed
+
+- **Lap lists are read straight from GMS.** Every GMS update of every pilot was written out as
+  text with a reflection dump and matched with a regex, on the main thread. The reader now
+  walks the object directly, in the same order and with the same limits, so it finds the same
+  laps to the millisecond. A host whose Windows writes decimals with a comma no longer reads
+  12.345 s as 12 s.
+- **The debug windows cost nothing while hidden.** Unity ran the IMGUI loop for the plugin
+  every frame; it now runs only while the stats overlay or the debug panel is shown.
+- **Reflection lookups on the host-state poll are cached.**
+
 ## [1.4.0] — 2026-09-14
 
 Only the copy of the plugin in the room host's game acts for the room, and it sends

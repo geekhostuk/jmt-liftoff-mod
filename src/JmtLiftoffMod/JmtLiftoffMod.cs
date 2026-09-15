@@ -8,7 +8,6 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -56,8 +55,10 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     private const int MaxBytePreview = 64;
     private const int ClassicRaceLapCount = 3;
     private static readonly string LapTimesSuffix = "_laptimes";
-    private static readonly Regex GmsLapArrayRegex = new(@"Single\[\]\[(?<count>\d+)\]\s\[(?<vals>[^\]]+)\]", RegexOptions.Compiled);
-    private static readonly Regex GmsLapValueRegex = new(@"float\s(?<v>-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
+    private readonly GmsLapReader _gmsLaps = new();
+
+    /// <summary>The most laps a GMS lap list may hold and still be read.</summary>
+    private int GmsLapCap => _maxLapsPerRace.Value > 0 ? _maxLapsPerRace.Value : 100;
     private readonly Dictionary<int, string> _actorToNick = new();
     private readonly Dictionary<int, string> _actorToUserId = new();
     private readonly Dictionary<int, int> _actorToRaceState = new();
@@ -312,6 +313,14 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         _log = Logger;
         DontDestroyOnLoad(gameObject);
         gameObject.hideFlags = HideFlags.HideAndDontSave;
+        FrameProbe.Install(message => _log.LogInfo(message));
+        _gui = gameObject.AddComponent<DebugGui>();
+        _gui.enabled = false;
+        _gui.Draw = () =>
+        {
+            _multiplayerTrackControl?.OnGUI();
+            _botStatsOverlay?.OnGUI();
+        };
 
         var harmony = new Harmony(PluginGuid);
         harmony.PatchAll();
@@ -709,6 +718,9 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         System.Threading.Volatile.Write(
             ref _lastMainThreadTickUtcMs,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        FrameProbe.Tick(counting: PhotonNetwork.InRoom);
+        using var probe = FrameProbe.Measure(FrameProbe.Part.Update);
+        _gui!.enabled = _botStatsOverlay?.Visible == true || _multiplayerTrackControl?.WantsGui == true;
 
         _updateCount++;
 
@@ -754,11 +766,8 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         // Keep callback active through scene/enable state changes.
     }
 
-    protected void OnGUI()
-    {
-        _multiplayerTrackControl?.OnGUI();
-        _botStatsOverlay?.OnGUI();
-    }
+    /// <summary>The IMGUI windows' host, enabled only while one is shown. See DebugGui.</summary>
+    private DebugGui? _gui;
 
     protected void OnDestroy()
     {
@@ -1049,6 +1058,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
     // Called for ALL Photon RaiseEvent messages received by this client
     public void OnEvent(EventData photonEvent)
     {
+        using var probe = FrameProbe.Measure(FrameProbe.Part.PhotonEvent);
         try
         {
             ProcessRaceSignals(photonEvent);
@@ -1109,6 +1119,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
     public void OnPlayerEnteredRoom(Player newPlayer)
     {
+        using var probe = FrameProbe.Measure(FrameProbe.Part.RoomMembers);
         _multiplayerTrackControl?.NotifyActivity(nameof(OnPlayerEnteredRoom));
         _actorToNick[newPlayer.ActorNumber] = newPlayer.NickName;
         if (!string.IsNullOrEmpty(newPlayer.UserId))
@@ -1127,6 +1138,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
     public void OnPlayerLeftRoom(Player otherPlayer)
     {
+        using var probe = FrameProbe.Measure(FrameProbe.Part.RoomMembers);
         _multiplayerTrackControl?.NotifyActivity(nameof(OnPlayerLeftRoom));
         _raceParticipants.Remove(otherPlayer.ActorNumber);
         _actorToNick.Remove(otherPlayer.ActorNumber);
@@ -1153,6 +1165,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
     public void OnRoomPropertiesUpdate(PhotonHashtable propertiesThatChanged)
     {
+        using var probe = FrameProbe.Measure(FrameProbe.Part.RoomProperties);
         _multiplayerTrackControl?.NotifyActivity(nameof(OnRoomPropertiesUpdate));
         if (TryGetInt(propertiesThatChanged, "SGSO", out var sharedGameStateOffset) && sharedGameStateOffset == 1)
         {
@@ -1166,6 +1179,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
     public void OnPlayerPropertiesUpdate(Player targetPlayer, PhotonHashtable changedProps)
     {
+        using var probe = FrameProbe.Measure(FrameProbe.Part.PlayerProperties);
         _multiplayerTrackControl?.NotifyActivity(nameof(OnPlayerPropertiesUpdate));
         _actorToNick[targetPlayer.ActorNumber] = targetPlayer.NickName;
         UpdateRaceStateFromProperties(targetPlayer.ActorNumber, changedProps);
@@ -1177,6 +1191,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
 
     public void OnMasterClientSwitched(Player newMasterClient)
     {
+        using var probe = FrameProbe.Measure(FrameProbe.Part.RoomMembers);
         _multiplayerTrackControl?.NotifyActivity(nameof(OnMasterClientSwitched));
         AppendStateLine($"Master client switched: Actor={newMasterClient.ActorNumber} Nick=\"{newMasterClient.NickName}\"");
         _multiplayerTrackControl?.OnMasterClientSwitched(newMasterClient);
@@ -1262,7 +1277,7 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
                 continue;
             if (player.CustomProperties != null
                 && player.CustomProperties.TryGetValue("GMS", out var gms) && gms != null
-                && TryExtractLapTimesFromGmsText(Describe(gms), out var lapTimesSec))
+                && _gmsLaps.TryRead(gms, GmsLapCap, out var lapTimesSec, out _))
             {
                 _actorGmsRun[actor] = lapTimesSec.Select(v => (int)Math.Round(v * 1000d)).ToList();
                 _log.LogInfo($"[Host] GMS baseline set for actor {actor}: {lapTimesSec.Count} lap(s) the previous host reported");
@@ -1674,13 +1689,12 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
         if (changedProps.TryGetValue("GMS", out var gmsObj) && gmsObj != null)
         {
             TryEmitThrottledActivity(actor, "property_change", "GMS");
-            var gmsText = Describe(gmsObj);
 
-            if (TryExtractLapTimesFromGmsText(gmsText, out var lapTimesSec))
+            if (_gmsLaps.TryRead(gmsObj, GmsLapCap, out var lapTimesSec, out var hasList))
             {
                 MergeGmsLapSeries(actor, lapTimesSec);
             }
-            else if (!gmsText.Contains("Single[]"))
+            else if (!hasList)
             {
                 // No lap list at all. The game republishes a pilot's GMS, empty, the moment it
                 // respawns their drone — about 0.6s before the drone reappears at the start.
@@ -2118,39 +2132,6 @@ public sealed class Plugin : BaseUnityPlugin, IOnEventCallback, IInRoomCallbacks
             ["previous_race_id"] = previousRaceId,
             ["race_ordinal"] = _raceOrdinal
         });
-    }
-
-    private bool TryExtractLapTimesFromGmsText(string gmsText, out List<float> lapTimesSec)
-    {
-        lapTimesSec = new List<float>();
-
-        var matches = GmsLapArrayRegex.Matches(gmsText);
-        foreach (Match match in matches)
-        {
-            if (!int.TryParse(match.Groups["count"].Value, out var expectedCount))
-                continue;
-
-            var values = new List<float>();
-            var valueMatches = GmsLapValueRegex.Matches(match.Groups["vals"].Value);
-            foreach (Match valueMatch in valueMatches)
-            {
-                if (float.TryParse(valueMatch.Groups["v"].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
-                    values.Add(value);
-            }
-
-            if (values.Count != expectedCount)
-                continue;
-            var gmsLapCap = _maxLapsPerRace.Value > 0 ? _maxLapsPerRace.Value : 100;
-            if (values.Count == 0 || values.Count > gmsLapCap)
-                continue;
-            if (values.Any(v => v <= 1f || v > 600f))
-                continue;
-
-            if (values.Count > lapTimesSec.Count)
-                lapTimesSec = values;
-        }
-
-        return lapTimesSec.Count > 0;
     }
 
     private void EmitPilotComplete(PilotLapState state)

@@ -24,6 +24,10 @@ internal sealed class BotStatsOverlay
     private readonly ConfigEntry<KeyboardShortcut> _toggleHotkey;
 
     private bool _visible;
+
+    /// <summary>Whether the overlay is showing, so its IMGUI host can be off the rest of the time.</summary>
+    public bool Visible => _visible;
+
     private Rect _windowRect = new(20, 20, 420, 520);
     private Vector2 _scrollPos;
 

@@ -334,7 +334,11 @@ internal sealed class CompetitionClient : IDisposable
         if (_disposed) return;
         if (_unitySyncContext != null)
         {
-            _unitySyncContext.Post(_ => action(), null);
+            _unitySyncContext.Post(_ =>
+            {
+                using var probe = FrameProbe.Measure(FrameProbe.Part.Command);
+                action();
+            }, null);
         }
         else
         {

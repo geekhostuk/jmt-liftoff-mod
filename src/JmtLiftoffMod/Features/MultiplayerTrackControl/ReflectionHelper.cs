@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -25,9 +26,8 @@ internal static class ReflectionHelper
             return false;
 
         var type = instance as Type ?? instance.GetType();
-        var flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        var property = type.GetProperty(memberName, flags);
-        if (property != null)
+        var member = FindMember(type, memberName);
+        if (member is PropertyInfo property)
         {
             try
             {
@@ -41,8 +41,7 @@ internal static class ReflectionHelper
             }
         }
 
-        var field = type.GetField(memberName, flags);
-        if (field != null)
+        if (member is FieldInfo field)
         {
             try
             {
@@ -58,6 +57,20 @@ internal static class ReflectionHelper
 
         return false;
     }
+
+    private static readonly ConcurrentDictionary<(Type, string), MemberInfo?> Members = new();
+
+    /// <summary>
+    /// A type's property of that name, else its field, looked up once: the host-state poll
+    /// reads the same few members off the same objects several times a second. A lookup that
+    /// throws is not remembered, so it throws again as it always did.
+    /// </summary>
+    private static MemberInfo? FindMember(Type type, string memberName) =>
+        Members.GetOrAdd((type, memberName), key =>
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            return (MemberInfo?)key.Item1.GetProperty(key.Item2, flags) ?? key.Item1.GetField(key.Item2, flags);
+        });
 
     public static Type? GetMemberType(object? instance, string memberName)
     {

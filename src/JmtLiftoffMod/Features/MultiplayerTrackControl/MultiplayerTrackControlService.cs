@@ -1249,9 +1249,12 @@ internal sealed class MultiplayerTrackControlService : IDisposable
         _patches.Dispose();
     }
 
+    /// <summary>Whether the debug panel is showing, so its IMGUI host can be off the rest of the time.</summary>
+    public bool WantsGui => _initialized && _config.ShowDebugPanel.Value;
+
     public void OnGUI()
     {
-        if (!_initialized || !_config.ShowDebugPanel.Value)
+        if (!WantsGui)
             return;
 
         _debugWindowRect = GUILayout.Window(
